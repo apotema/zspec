@@ -1,0 +1,23 @@
+.{
+    .name = .game,
+    .version = "0.1.0",
+    .fingerprint = 0x232b318cf2779f47,
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "tests",
+        "README.md",
+    },
+    .dependencies = .{
+        // Reference parent zspec project (local path)
+        .zspec = .{
+            .path = "..",
+        },
+        // zig-ecs from GitHub
+        .ecs = .{
+            .url = "https://github.com/prime31/zig-ecs/archive/refs/heads/master.tar.gz",
+            .hash = "1220cf5da51bc914ac0532bbe42af55ae8d403dda44e826e816af2168d91e120bf44",
+        },
+    },
+}

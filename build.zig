@@ -50,6 +50,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "examples-let", .path = "examples/let_memoization_test.zig" },
         .{ .name = "examples-nested", .path = "examples/nested_contexts_test.zig" },
         .{ .name = "examples-matchers", .path = "examples/matchers_test.zig" },
+        .{ .name = "examples-factory", .path = "examples/factory_test.zig" },
     };
 
     const examples_all_step = b.step("examples", "Run all examples");

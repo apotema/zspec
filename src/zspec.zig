@@ -6,9 +6,13 @@
 //! - beforeAll/afterAll hooks (per-scope)
 //! - let (memoized lazy values)
 //! - Custom matchers and assertions
+//! - Factory (FactoryBot-like test data generation)
 
 const std = @import("std");
 const builtin = @import("builtin");
+
+// Re-export Factory module
+pub const Factory = @import("factory.zig");
 
 /// Memoized lazy value that is computed once per test and cached.
 /// Similar to RSpec's `let`.

@@ -4,7 +4,9 @@
       "Bash(zig build:*)",
       "Bash(zig version:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(gh repo create:*)",
+      "Bash(gh release create:*)"
     ],
     "deny": [],
     "ask": []

@@ -150,6 +150,107 @@ try expect.toBeEmpty(slice);
 try expect.notToBeEmpty(slice);
 ```
 
+## ECS Integration (zig-ecs)
+
+ZSpec provides helpers for testing Entity Component Systems with [zig-ecs](https://github.com/prime31/zig-ecs).
+
+### Installation
+
+Add zig-ecs to your dependencies and use ZSpec's ECS helpers:
+
+```zig
+const zspec = @import("zspec");
+const ecs = @import("zig-ecs");
+const ECS = zspec.ECS;
+const Factory = zspec.Factory;
+```
+
+### Basic Usage
+
+```zig
+// Define component factories
+const PositionFactory = Factory.define(Position, .{
+    .x = 0.0,
+    .y = 0.0,
+});
+
+const HealthFactory = Factory.define(Health, .{
+    .current = 100,
+    .max = 100,
+});
+
+pub const GameTests = struct {
+    var registry: *ecs.Registry = undefined;
+
+    test "tests:before" {
+        Factory.resetSequences();
+        registry = ECS.createRegistry(ecs.Registry);
+    }
+
+    test "tests:after" {
+        ECS.destroyRegistry(registry);
+    }
+
+    test "creates entity with components" {
+        const entity = ECS.createEntity(registry, .{
+            .position = PositionFactory.build(.{ .x = 10.0 }),
+            .health = HealthFactory.build(.{}),
+        });
+        // entity is created with Position and Health components
+    }
+};
+```
+
+### ECS Helper Functions
+
+```zig
+// Registry management
+const registry = ECS.createRegistry(ecs.Registry);
+ECS.destroyRegistry(registry);
+
+// Create single entity with components
+const entity = ECS.createEntity(registry, .{
+    .position = PositionFactory.build(.{}),
+    .velocity = VelocityFactory.build(.{ .dx = 5.0 }),
+});
+
+// Batch create entities
+const enemies = ECS.createEntities(registry, 10, .{
+    .position = PositionFactory.build(.{}),
+    .health = HealthFactory.build(.{}),
+});
+defer std.testing.allocator.free(enemies);
+
+// ComponentFactory pattern
+const PositionComponent = ECS.ComponentFactory(Position, PositionFactory);
+PositionComponent.attach(registry, entity, .{ .x = 10.0 });
+```
+
+### Using Let with ECS
+
+```zig
+pub const MyTests = struct {
+    fn createTestRegistry() *ecs.Registry {
+        return ECS.createRegistry(ecs.Registry);
+    }
+
+    const registry = zspec.Let(*ecs.Registry, createTestRegistry);
+
+    test "tests:after" {
+        ECS.destroyRegistry(registry.get());
+        registry.reset();
+    }
+
+    test "my test" {
+        const entity = ECS.createEntity(registry.get(), .{
+            .position = PositionFactory.build(.{}),
+        });
+    }
+};
+```
+
+See [examples/ecs_integration_test.zig](examples/ecs_integration_test.zig) for comprehensive patterns.
+
 ## Running Tests
 
 ```bash

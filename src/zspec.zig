@@ -14,6 +14,9 @@ const builtin = @import("builtin");
 // Re-export Factory module
 pub const Factory = @import("factory.zig");
 
+// Re-export ECS integration helpers
+pub const ECS = @import("ecs.zig");
+
 /// Memoized lazy value that is computed once per test and cached.
 /// Similar to RSpec's `let`.
 pub fn Let(comptime T: type, comptime init_fn: fn () T) type {

@@ -150,151 +150,51 @@ try expect.toBeEmpty(slice);
 try expect.notToBeEmpty(slice);
 ```
 
-## ECS Integration (zig-ecs)
+## Optional Integrations
 
-ZSpec provides an optional integration module for testing Entity Component Systems with [zig-ecs](https://github.com/prime31/zig-ecs).
+### ECS Integration (zig-ecs)
 
-### Installation
-
-Add both zspec and zig-ecs to your `build.zig.zon`:
+ZSpec provides an optional `zspec-ecs` module for testing Entity Component Systems with [zig-ecs](https://github.com/prime31/zig-ecs).
 
 ```zig
-.dependencies = .{
-    .zspec = .{
-        .url = "https://github.com/apotema/zspec/archive/refs/heads/main.tar.gz",
-        .hash = "...",
-    },
-    .ecs = .{
-        .url = "https://github.com/prime31/zig-ecs/archive/refs/heads/master.tar.gz",
-        .hash = "...",
-    },
-},
+const ECS = @import("zspec-ecs");
+
+test "creates entities with components" {
+    const registry = ECS.createRegistry(ecs.Registry);
+    defer ECS.destroyRegistry(registry);
+
+    const entity = ECS.createEntity(registry, .{
+        .position = PositionFactory.build(.{}),
+        .health = HealthFactory.build(.{}),
+    });
+}
 ```
 
-In your `build.zig`, import both the core module and the optional ECS integration:
+**[📖 Full ECS Integration Guide](https://github.com/apotema/zspec/wiki/ECS-Integration)** | [Examples](examples/ecs_integration_test.zig) | [Usage Project](usage/ecs/)
+
+### FSM Integration (zigfsm)
+
+ZSpec provides an optional `zspec-fsm` module for testing Finite State Machines with [zigfsm](https://github.com/cryptocode/zigfsm).
 
 ```zig
-const zspec_dep = b.dependency("zspec", .{
-    .target = target,
-    .optimize = optimize,
-});
-const zspec_mod = zspec_dep.module("zspec");
-const zspec_ecs_mod = zspec_dep.module("zspec-ecs");  // Optional ECS integration
+const FSM = @import("zspec-fsm");
 
-const ecs_dep = b.dependency("ecs", .{
-    .target = target,
-    .optimize = optimize,
-});
+test "state transitions" {
+    var fsm = MyFSM.init();
+    defer fsm.deinit();
 
-const tests = b.addTest(.{
-    .root_module = b.createModule(.{
-        .root_source_file = b.path("tests/my_test.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "zspec", .module = zspec_mod },
-            .{ .name = "zspec-ecs", .module = zspec_ecs_mod },
-            .{ .name = "zig-ecs", .module = ecs_dep.module("zig-ecs") },
-        },
-    }),
-    .test_runner = .{ .path = zspec_dep.path("src/runner.zig"), .mode = .simple },
-});
+    // Bulk transition setup
+    try FSM.addTransitions(MyFSM, &fsm, &.{
+        .{ .event = .start, .from = .idle, .to = .running },
+        .{ .event = .stop, .from = .running, .to = .stopped },
+    });
+
+    // Test event sequence
+    try FSM.applyEventsAndVerify(MyFSM, &fsm, &.{ .start, .stop }, .stopped);
+}
 ```
 
-In your test file:
-
-```zig
-const zspec = @import("zspec");
-const ecs = @import("zig-ecs");
-const ECS = @import("zspec-ecs");  // Optional ECS integration module
-const Factory = zspec.Factory;
-```
-
-### Basic Usage
-
-```zig
-// Define component factories
-const PositionFactory = Factory.define(Position, .{
-    .x = 0.0,
-    .y = 0.0,
-});
-
-const HealthFactory = Factory.define(Health, .{
-    .current = 100,
-    .max = 100,
-});
-
-pub const GameTests = struct {
-    var registry: *ecs.Registry = undefined;
-
-    test "tests:before" {
-        Factory.resetSequences();
-        registry = ECS.createRegistry(ecs.Registry);
-    }
-
-    test "tests:after" {
-        ECS.destroyRegistry(registry);
-    }
-
-    test "creates entity with components" {
-        const entity = ECS.createEntity(registry, .{
-            .position = PositionFactory.build(.{ .x = 10.0 }),
-            .health = HealthFactory.build(.{}),
-        });
-        // entity is created with Position and Health components
-    }
-};
-```
-
-### ECS Helper Functions
-
-```zig
-// Registry management
-const registry = ECS.createRegistry(ecs.Registry);
-ECS.destroyRegistry(registry);
-
-// Create single entity with components
-const entity = ECS.createEntity(registry, .{
-    .position = PositionFactory.build(.{}),
-    .velocity = VelocityFactory.build(.{ .dx = 5.0 }),
-});
-
-// Batch create entities
-const enemies = ECS.createEntities(registry, 10, .{
-    .position = PositionFactory.build(.{}),
-    .health = HealthFactory.build(.{}),
-});
-defer std.testing.allocator.free(enemies);
-
-// ComponentFactory pattern
-const PositionComponent = ECS.ComponentFactory(Position, PositionFactory);
-PositionComponent.attach(registry, entity, .{ .x = 10.0 });
-```
-
-### Using Let with ECS
-
-```zig
-pub const MyTests = struct {
-    fn createTestRegistry() *ecs.Registry {
-        return ECS.createRegistry(ecs.Registry);
-    }
-
-    const registry = zspec.Let(*ecs.Registry, createTestRegistry);
-
-    test "tests:after" {
-        ECS.destroyRegistry(registry.get());
-        registry.reset();
-    }
-
-    test "my test" {
-        const entity = ECS.createEntity(registry.get(), .{
-            .position = PositionFactory.build(.{}),
-        });
-    }
-};
-```
-
-See [examples/ecs_integration_test.zig](examples/ecs_integration_test.zig) for comprehensive patterns.
+**[📖 Full FSM Integration Guide](https://github.com/apotema/zspec/wiki/FSM-Integration)** | [Examples](examples/fsm_integration_test.zig) | [Usage Project](usage/fsm/)
 
 ## Running Tests
 

@@ -45,6 +45,18 @@ ZSpec is an RSpec-like testing framework for Zig with these main components:
 - Used in before/after hooks for registry management
 - Combines with Factory for component data generation
 - Import with: `const ECS = @import("zspec-ecs");`
+- See usage/ecs/ for complete example project
+
+**src/integrations/fsm.zig** - Optional FSM integration module for zigfsm (https://github.com/cryptocode/zigfsm):
+- Exposed as separate "zspec-fsm" module that users opt into
+- `FSM.addTransitions(FSMType, fsm, transitions)` - Bulk transition setup
+- `FSM.applyEventsAndVerify(FSMType, fsm, events, expected_state)` - Event sequence testing
+- `FSM.expectValidNextStates(FSMType, fsm, states)` - State validation helpers
+- `FSM.FSMBuilder(FSMType)` - Builder pattern for fluent FSM configuration
+- Used in before/after hooks for FSM initialization/cleanup
+- Combines with Factory for test state generation
+- Import with: `const FSM = @import("zspec-fsm");`
+- See usage/fsm/ for complete example project
 
 **src/runner.zig** - Custom test runner that processes hooks and provides output:
 - Hooks are identified by test name suffixes: `tests:beforeAll`, `tests:afterAll`, `tests:before`, `tests:after`
@@ -153,6 +165,67 @@ pub const LetBasedTests = struct {
         const entity = ECS.createEntity(registry.get(), .{
             .position = PositionFactory.build(.{}),
         });
+    }
+};
+```
+
+## FSM Integration Pattern (zigfsm)
+
+NOTE: FSM integration is an optional separate module. Import with:
+```zig
+const zspec = @import("zspec");
+const zigfsm = @import("zigfsm");
+const FSM = @import("zspec-fsm");  // Optional module
+
+const State = enum { idle, running, stopped };
+const Event = enum { start, stop };
+
+pub const FSMTests = struct {
+    const MyFSM = zigfsm.StateMachine(State, Event, .idle);
+    var fsm: MyFSM = undefined;
+
+    test "tests:before" {
+        Factory.resetSequences();
+        fsm = MyFSM.init();
+        // Bulk transition setup
+        try FSM.addTransitions(MyFSM, &fsm, &.{
+            .{ .event = .start, .from = .idle, .to = .running },
+            .{ .event = .stop, .from = .running, .to = .stopped },
+        });
+    }
+
+    test "tests:after" {
+        fsm.deinit();
+    }
+
+    test "state transitions" {
+        try fsm.do(.start);
+        try zspec.expect.toBeTrue(fsm.isCurrently(.running));
+    }
+
+    test "event sequence" {
+        // Apply multiple events and verify final state
+        try FSM.applyEventsAndVerify(MyFSM, &fsm, &.{
+            .start,
+            .stop,
+        }, .stopped);
+    }
+};
+
+// Alternative: Using FSM Builder pattern
+pub const BuilderTests = struct {
+    test "build FSM with builder" {
+        const Builder = FSM.FSMBuilder(MyFSM);
+
+        var builder = Builder.init();
+        _ = try builder.withEvent(.start, .idle, .running);
+        _ = try builder.withEvent(.stop, .running, .stopped);
+
+        var fsm = builder.build();
+        defer fsm.deinit();
+
+        try fsm.do(.start);
+        try zspec.expect.toBeTrue(fsm.isCurrently(.running));
     }
 };
 ```

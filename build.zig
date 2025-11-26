@@ -42,4 +42,34 @@ pub fn build(b: *std.Build) void {
 
     const example_step = b.step("example", "Run example tests");
     example_step.dependOn(&run_example_tests.step);
+
+    // Examples - individual example files
+    const example_files = [_]struct { name: []const u8, path: []const u8 }{
+        .{ .name = "examples-basic", .path = "examples/basic_test.zig" },
+        .{ .name = "examples-hooks", .path = "examples/hooks_test.zig" },
+        .{ .name = "examples-let", .path = "examples/let_memoization_test.zig" },
+        .{ .name = "examples-nested", .path = "examples/nested_contexts_test.zig" },
+        .{ .name = "examples-matchers", .path = "examples/matchers_test.zig" },
+    };
+
+    const examples_all_step = b.step("examples", "Run all examples");
+
+    for (example_files) |ex| {
+        const ex_test = b.addTest(.{
+            .root_module = b.createModule(.{
+                .root_source_file = b.path(ex.path),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{
+                    .{ .name = "zspec", .module = zspec_mod },
+                },
+            }),
+            .test_runner = .{ .path = b.path("src/runner.zig"), .mode = .simple },
+        });
+
+        const run_ex = b.addRunArtifact(ex_test);
+        const ex_step = b.step(ex.name, b.fmt("Run {s}", .{ex.path}));
+        ex_step.dependOn(&run_ex.step);
+        examples_all_step.dependOn(&run_ex.step);
+    }
 }

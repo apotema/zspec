@@ -42,7 +42,7 @@ const std = @import("std");
 /// Transition definition for test setup
 pub fn Transition(comptime State: type, comptime Event: type) type {
     return struct {
-        event: ?Event = null,
+        event: Event,
         from: State,
         to: State,
     };
@@ -53,14 +53,10 @@ pub fn Transition(comptime State: type, comptime Event: type) type {
 pub fn addTransitions(
     comptime FSMType: type,
     fsm: *FSMType,
-    transitions: []const Transition(@TypeOf(fsm.*.state), @TypeOf(@as(?FSMType.Event, null) orelse unreachable)),
+    transitions: []const Transition(@TypeOf(fsm.*.state), FSMType.Event),
 ) !void {
     for (transitions) |t| {
-        if (t.event) |event| {
-            try fsm.addEventAndTransition(event, t.from, t.to);
-        } else {
-            try fsm.addTransition(t.from, t.to);
-        }
+        try fsm.addEventAndTransition(t.event, t.from, t.to);
     }
 }
 

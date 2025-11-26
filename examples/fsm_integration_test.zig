@@ -44,22 +44,20 @@ const expect = zspec.expect;
 const Factory = zspec.Factory;
 
 // Import the optional FSM integration module
-// In your actual code: const FSM = @import("zspec-fsm");
-const FSM = struct {
-    pub usingnamespace @import("../src/integrations/fsm.zig");
-};
+const FSM = @import("zspec-fsm");
 
 // Mock zigfsm for demonstration
 // In real usage: const zigfsm = @import("zigfsm");
 const zigfsm = struct {
-    pub fn StateMachine(comptime State: type, comptime Event: type, comptime initial: State) type {
+    pub fn StateMachine(comptime StateT: type, comptime EventT: type, comptime initial: StateT) type {
         return struct {
-            state: State = initial,
+            state: StateT = initial,
             transitions: std.ArrayList(Transition),
             allocator: std.mem.Allocator,
 
             const Self = @This();
-            pub const Event = Event;
+            pub const State = StateT;
+            pub const Event = EventT;
 
             const Transition = struct {
                 event: ?Event,
@@ -78,15 +76,15 @@ const zigfsm = struct {
                 self.transitions.deinit();
             }
 
-            pub fn addTransition(self: *Self, from: State, to: State) !void {
+            pub fn addTransition(self: *Self, from: StateT, to: StateT) !void {
                 try self.transitions.append(.{ .event = null, .from = from, .to = to });
             }
 
-            pub fn addEventAndTransition(self: *Self, event: Event, from: State, to: State) !void {
+            pub fn addEventAndTransition(self: *Self, event: EventT, from: StateT, to: StateT) !void {
                 try self.transitions.append(.{ .event = event, .from = from, .to = to });
             }
 
-            pub fn do(self: *Self, event: Event) !void {
+            pub fn do(self: *Self, event: EventT) !void {
                 for (self.transitions.items) |t| {
                     if (t.event) |e| {
                         if (e == event and t.from == self.state) {
@@ -98,7 +96,7 @@ const zigfsm = struct {
                 return error.InvalidTransition;
             }
 
-            pub fn transitionTo(self: *Self, to: State) !void {
+            pub fn transitionTo(self: *Self, to: StateT) !void {
                 for (self.transitions.items) |t| {
                     if (t.from == self.state and t.to == to) {
                         self.state = to;
@@ -108,11 +106,11 @@ const zigfsm = struct {
                 return error.InvalidTransition;
             }
 
-            pub fn isCurrently(self: *const Self, state: State) bool {
+            pub fn isCurrently(self: *const Self, state: StateT) bool {
                 return self.state == state;
             }
 
-            pub fn canTransitionTo(self: *const Self, to: State) bool {
+            pub fn canTransitionTo(self: *const Self, to: StateT) bool {
                 for (self.transitions.items) |t| {
                     if (t.from == self.state and t.to == to) {
                         return true;

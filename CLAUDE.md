@@ -36,6 +36,16 @@ ZSpec is an RSpec-like testing framework for Zig with these main components:
 - `.build(.{})` / `.buildPtr(.{})` - Create instances (uses std.testing.allocator)
 - `.buildWith(alloc, .{})` / `.buildPtrWith(alloc, .{})` - Create with custom allocator
 
+**src/integrations/ecs.zig** - Optional ECS integration module for zig-ecs (https://github.com/prime31/zig-ecs):
+- Exposed as separate "zspec-ecs" module that users opt into
+- `ECS.createRegistry(T)` / `ECS.destroyRegistry(reg)` - Registry setup/teardown
+- `ECS.createEntity(reg, .{ .comp = ... })` - Create entity with components
+- `ECS.createEntities(reg, count, .{})` - Batch create entities
+- `ECS.ComponentFactory(T, Factory)` - Component-specific factory wrapper
+- Used in before/after hooks for registry management
+- Combines with Factory for component data generation
+- Import with: `const ECS = @import("zspec-ecs");`
+
 **src/runner.zig** - Custom test runner that processes hooks and provides output:
 - Hooks are identified by test name suffixes: `tests:beforeAll`, `tests:afterAll`, `tests:before`, `tests:after`
 - Scoped hooks: hooks only apply to tests within their containing struct (determined by comparing name prefixes)
@@ -78,4 +88,71 @@ const AdminFactory = UserFactory.trait(.{ .role = "admin" });
 // Usage - use arena allocator to avoid leaks from sequenceFmt
 const user = UserFactory.buildWith(arena_alloc, .{});
 const admin = AdminFactory.buildWith(arena_alloc, .{ .name = "Custom Name" });
+```
+
+## ECS Integration Pattern (zig-ecs)
+
+NOTE: ECS integration is an optional separate module. Import with:
+```zig
+const zspec = @import("zspec");
+const ecs = @import("zig-ecs");
+const ECS = @import("zspec-ecs");  // Optional module
+
+// Define component factories
+const PositionFactory = Factory.define(Position, .{
+    .x = 0.0,
+    .y = 0.0,
+});
+
+const HealthFactory = Factory.define(Health, .{
+    .current = 100,
+    .max = 100,
+});
+
+pub const GameTests = struct {
+    var registry: *ecs.Registry = undefined;
+
+    test "tests:before" {
+        Factory.resetSequences();
+        registry = ECS.createRegistry(ecs.Registry);
+    }
+
+    test "tests:after" {
+        ECS.destroyRegistry(registry);
+    }
+
+    test "creates entities" {
+        // Single entity with components
+        const player = ECS.createEntity(registry, .{
+            .position = PositionFactory.build(.{ .x = 10.0 }),
+            .health = HealthFactory.build(.{}),
+        });
+
+        // Batch create
+        const enemies = ECS.createEntities(registry, 5, .{
+            .position = PositionFactory.build(.{}),
+        });
+        defer std.testing.allocator.free(enemies);
+    }
+};
+
+// Alternative: Using Let for memoized registry
+pub const LetBasedTests = struct {
+    fn createRegistry() *ecs.Registry {
+        return ECS.createRegistry(ecs.Registry);
+    }
+
+    const registry = zspec.Let(*ecs.Registry, createRegistry);
+
+    test "tests:after" {
+        ECS.destroyRegistry(registry.get());
+        registry.reset();
+    }
+
+    test "my test" {
+        const entity = ECS.createEntity(registry.get(), .{
+            .position = PositionFactory.build(.{}),
+        });
+    }
+};
 ```

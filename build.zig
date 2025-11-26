@@ -11,6 +11,13 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // Optional ECS integration module
+    _ = b.addModule("zspec-ecs", .{
+        .root_source_file = b.path("src/integrations/ecs.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     // Unit tests for zspec itself
     const lib_unit_tests = b.addTest(.{
         .root_module = b.createModule(.{

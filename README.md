@@ -150,6 +150,152 @@ try expect.toBeEmpty(slice);
 try expect.notToBeEmpty(slice);
 ```
 
+## ECS Integration (zig-ecs)
+
+ZSpec provides an optional integration module for testing Entity Component Systems with [zig-ecs](https://github.com/prime31/zig-ecs).
+
+### Installation
+
+Add both zspec and zig-ecs to your `build.zig.zon`:
+
+```zig
+.dependencies = .{
+    .zspec = .{
+        .url = "https://github.com/apotema/zspec/archive/refs/heads/main.tar.gz",
+        .hash = "...",
+    },
+    .ecs = .{
+        .url = "https://github.com/prime31/zig-ecs/archive/refs/heads/master.tar.gz",
+        .hash = "...",
+    },
+},
+```
+
+In your `build.zig`, import both the core module and the optional ECS integration:
+
+```zig
+const zspec_dep = b.dependency("zspec", .{
+    .target = target,
+    .optimize = optimize,
+});
+const zspec_mod = zspec_dep.module("zspec");
+const zspec_ecs_mod = zspec_dep.module("zspec-ecs");  // Optional ECS integration
+
+const ecs_dep = b.dependency("ecs", .{
+    .target = target,
+    .optimize = optimize,
+});
+
+const tests = b.addTest(.{
+    .root_module = b.createModule(.{
+        .root_source_file = b.path("tests/my_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "zspec", .module = zspec_mod },
+            .{ .name = "zspec-ecs", .module = zspec_ecs_mod },
+            .{ .name = "zig-ecs", .module = ecs_dep.module("zig-ecs") },
+        },
+    }),
+    .test_runner = .{ .path = zspec_dep.path("src/runner.zig"), .mode = .simple },
+});
+```
+
+In your test file:
+
+```zig
+const zspec = @import("zspec");
+const ecs = @import("zig-ecs");
+const ECS = @import("zspec-ecs");  // Optional ECS integration module
+const Factory = zspec.Factory;
+```
+
+### Basic Usage
+
+```zig
+// Define component factories
+const PositionFactory = Factory.define(Position, .{
+    .x = 0.0,
+    .y = 0.0,
+});
+
+const HealthFactory = Factory.define(Health, .{
+    .current = 100,
+    .max = 100,
+});
+
+pub const GameTests = struct {
+    var registry: *ecs.Registry = undefined;
+
+    test "tests:before" {
+        Factory.resetSequences();
+        registry = ECS.createRegistry(ecs.Registry);
+    }
+
+    test "tests:after" {
+        ECS.destroyRegistry(registry);
+    }
+
+    test "creates entity with components" {
+        const entity = ECS.createEntity(registry, .{
+            .position = PositionFactory.build(.{ .x = 10.0 }),
+            .health = HealthFactory.build(.{}),
+        });
+        // entity is created with Position and Health components
+    }
+};
+```
+
+### ECS Helper Functions
+
+```zig
+// Registry management
+const registry = ECS.createRegistry(ecs.Registry);
+ECS.destroyRegistry(registry);
+
+// Create single entity with components
+const entity = ECS.createEntity(registry, .{
+    .position = PositionFactory.build(.{}),
+    .velocity = VelocityFactory.build(.{ .dx = 5.0 }),
+});
+
+// Batch create entities
+const enemies = ECS.createEntities(registry, 10, .{
+    .position = PositionFactory.build(.{}),
+    .health = HealthFactory.build(.{}),
+});
+defer std.testing.allocator.free(enemies);
+
+// ComponentFactory pattern
+const PositionComponent = ECS.ComponentFactory(Position, PositionFactory);
+PositionComponent.attach(registry, entity, .{ .x = 10.0 });
+```
+
+### Using Let with ECS
+
+```zig
+pub const MyTests = struct {
+    fn createTestRegistry() *ecs.Registry {
+        return ECS.createRegistry(ecs.Registry);
+    }
+
+    const registry = zspec.Let(*ecs.Registry, createTestRegistry);
+
+    test "tests:after" {
+        ECS.destroyRegistry(registry.get());
+        registry.reset();
+    }
+
+    test "my test" {
+        const entity = ECS.createEntity(registry.get(), .{
+            .position = PositionFactory.build(.{}),
+        });
+    }
+};
+```
+
+See [examples/ecs_integration_test.zig](examples/ecs_integration_test.zig) for comprehensive patterns.
+
 ## Running Tests
 
 ```bash

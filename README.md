@@ -152,16 +152,61 @@ try expect.notToBeEmpty(slice);
 
 ## ECS Integration (zig-ecs)
 
-ZSpec provides helpers for testing Entity Component Systems with [zig-ecs](https://github.com/prime31/zig-ecs).
+ZSpec provides an optional integration module for testing Entity Component Systems with [zig-ecs](https://github.com/prime31/zig-ecs).
 
 ### Installation
 
-Add zig-ecs to your dependencies and use ZSpec's ECS helpers:
+Add both zspec and zig-ecs to your `build.zig.zon`:
+
+```zig
+.dependencies = .{
+    .zspec = .{
+        .url = "https://github.com/apotema/zspec/archive/refs/heads/main.tar.gz",
+        .hash = "...",
+    },
+    .ecs = .{
+        .url = "https://github.com/prime31/zig-ecs/archive/refs/heads/master.tar.gz",
+        .hash = "...",
+    },
+},
+```
+
+In your `build.zig`, import both the core module and the optional ECS integration:
+
+```zig
+const zspec_dep = b.dependency("zspec", .{
+    .target = target,
+    .optimize = optimize,
+});
+const zspec_mod = zspec_dep.module("zspec");
+const zspec_ecs_mod = zspec_dep.module("zspec-ecs");  // Optional ECS integration
+
+const ecs_dep = b.dependency("ecs", .{
+    .target = target,
+    .optimize = optimize,
+});
+
+const tests = b.addTest(.{
+    .root_module = b.createModule(.{
+        .root_source_file = b.path("tests/my_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "zspec", .module = zspec_mod },
+            .{ .name = "zspec-ecs", .module = zspec_ecs_mod },
+            .{ .name = "zig-ecs", .module = ecs_dep.module("zig-ecs") },
+        },
+    }),
+    .test_runner = .{ .path = zspec_dep.path("src/runner.zig"), .mode = .simple },
+});
+```
+
+In your test file:
 
 ```zig
 const zspec = @import("zspec");
 const ecs = @import("zig-ecs");
-const ECS = zspec.ECS;
+const ECS = @import("zspec-ecs");  // Optional ECS integration module
 const Factory = zspec.Factory;
 ```
 

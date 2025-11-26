@@ -36,13 +36,15 @@ ZSpec is an RSpec-like testing framework for Zig with these main components:
 - `.build(.{})` / `.buildPtr(.{})` - Create instances (uses std.testing.allocator)
 - `.buildWith(alloc, .{})` / `.buildPtrWith(alloc, .{})` - Create with custom allocator
 
-**src/ecs.zig** - ECS integration helpers for zig-ecs (https://github.com/prime31/zig-ecs):
+**src/integrations/ecs.zig** - Optional ECS integration module for zig-ecs (https://github.com/prime31/zig-ecs):
+- Exposed as separate "zspec-ecs" module that users opt into
 - `ECS.createRegistry(T)` / `ECS.destroyRegistry(reg)` - Registry setup/teardown
 - `ECS.createEntity(reg, .{ .comp = ... })` - Create entity with components
 - `ECS.createEntities(reg, count, .{})` - Batch create entities
 - `ECS.ComponentFactory(T, Factory)` - Component-specific factory wrapper
 - Used in before/after hooks for registry management
 - Combines with Factory for component data generation
+- Import with: `const ECS = @import("zspec-ecs");`
 
 **src/runner.zig** - Custom test runner that processes hooks and provides output:
 - Hooks are identified by test name suffixes: `tests:beforeAll`, `tests:afterAll`, `tests:before`, `tests:after`
@@ -90,9 +92,11 @@ const admin = AdminFactory.buildWith(arena_alloc, .{ .name = "Custom Name" });
 
 ## ECS Integration Pattern (zig-ecs)
 
+NOTE: ECS integration is an optional separate module. Import with:
 ```zig
+const zspec = @import("zspec");
 const ecs = @import("zig-ecs");
-const ECS = zspec.ECS;
+const ECS = @import("zspec-ecs");  // Optional module
 
 // Define component factories
 const PositionFactory = Factory.define(Position, .{

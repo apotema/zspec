@@ -14,27 +14,44 @@
 //! NOTE: This example shows the integration pattern but does not actually
 //! import zig-ecs since it's not a dependency. To use this pattern:
 //!
-//! 1. Add zig-ecs to your build.zig.zon:
+//! 1. Add zspec and zig-ecs to your build.zig.zon:
 //!    .dependencies = .{
+//!        .zspec = .{
+//!            .url = "https://github.com/apotema/zspec/archive/refs/heads/main.tar.gz",
+//!            .hash = "...",
+//!        },
 //!        .ecs = .{
 //!            .url = "https://github.com/prime31/zig-ecs/archive/refs/heads/master.tar.gz",
 //!            .hash = "...",
 //!        },
 //!    },
 //!
-//! 2. Add to your build.zig test imports:
+//! 2. In your build.zig, get both modules:
+//!    const zspec_dep = b.dependency("zspec", .{ .target = target, .optimize = optimize });
+//!    const zspec_mod = zspec_dep.module("zspec");
+//!    const zspec_ecs_mod = zspec_dep.module("zspec-ecs");  // Optional ECS integration
+//!    const ecs_dep = b.dependency("ecs", .{ .target = target, .optimize = optimize });
+//!
+//! 3. Add to your build.zig test imports:
 //!    .imports = &.{
-//!        .{ .name = "zspec", .module = zspec.module("zspec") },
+//!        .{ .name = "zspec", .module = zspec_mod },
+//!        .{ .name = "zspec-ecs", .module = zspec_ecs_mod },
 //!        .{ .name = "zig-ecs", .module = ecs_dep.module("zig-ecs") },
 //!    },
 //!
-//! 3. Use the patterns shown below in your tests
+//! 4. Use the patterns shown below in your tests
 
 const std = @import("std");
 const zspec = @import("zspec");
 const expect = zspec.expect;
 const Factory = zspec.Factory;
-const ECS = zspec.ECS;
+
+// Import the optional ECS integration module
+// In your actual code: const ECS = @import("zspec-ecs");
+// For this example, we use a mock since zig-ecs isn't a dependency
+const ECS = struct {
+    pub usingnamespace @import("../src/integrations/ecs.zig");
+};
 
 // Uncomment when you have zig-ecs as a dependency:
 // const ecs = @import("zig-ecs");

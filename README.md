@@ -1,7 +1,7 @@
 # ZSpec
 
 [![CI](https://github.com/apotema/zspec/actions/workflows/ci.yml/badge.svg)](https://github.com/apotema/zspec/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/apotema/7c6cd8ebc93fc49290cc036271dca4cc/raw/coverage.json)](https://github.com/apotema/zspec/actions/workflows/coverage.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/apotema/7c6cd8ebc93fc49290cc036271dca4cc/raw/coverage.json)](https://apotema.github.io/zspec/coverage/)
 
 RSpec-like testing framework for Zig.
 

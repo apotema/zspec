@@ -73,6 +73,14 @@ jobs:
           name: coverage-report
           path: coverage/
 
+      - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./coverage/test
+          destination_dir: coverage
+
       - name: Upload to Codecov
         uses: codecov/codecov-action@v4
         with:

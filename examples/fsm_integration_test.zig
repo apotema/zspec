@@ -67,40 +67,21 @@ const zigfsm = struct {
 
             pub fn init() Self {
                 return .{
-                    .transitions = std.ArrayList(Transition).init(std.testing.allocator),
+                    .transitions = .{},
                     .allocator = std.testing.allocator,
                 };
             }
 
             pub fn deinit(self: *Self) void {
-                // Zig 0.15+ requires allocator parameter
-                if (@hasDecl(std.ArrayList(Transition), "deinit")) {
-                    if (@typeInfo(@TypeOf(std.ArrayList(Transition).deinit)).@"fn".params.len == 2) {
-                        self.transitions.deinit(self.allocator);
-                    } else {
-                        self.transitions.deinit();
-                    }
-                } else {
-                    self.transitions.deinit();
-                }
+                self.transitions.deinit(self.allocator);
             }
 
             pub fn addTransition(self: *Self, from: StateT, to: StateT) !void {
-                // Zig 0.15+ requires allocator parameter
-                if (@typeInfo(@TypeOf(std.ArrayList(Transition).append)).@"fn".params.len == 3) {
-                    try self.transitions.append(self.allocator, .{ .event = null, .from = from, .to = to });
-                } else {
-                    try self.transitions.append(.{ .event = null, .from = from, .to = to });
-                }
+                try self.transitions.append(self.allocator, .{ .event = null, .from = from, .to = to });
             }
 
             pub fn addEventAndTransition(self: *Self, event: EventT, from: StateT, to: StateT) !void {
-                // Zig 0.15+ requires allocator parameter
-                if (@typeInfo(@TypeOf(std.ArrayList(Transition).append)).@"fn".params.len == 3) {
-                    try self.transitions.append(self.allocator, .{ .event = event, .from = from, .to = to });
-                } else {
-                    try self.transitions.append(.{ .event = event, .from = from, .to = to });
-                }
+                try self.transitions.append(self.allocator, .{ .event = event, .from = from, .to = to });
             }
 
             pub fn do(self: *Self, event: EventT) !void {

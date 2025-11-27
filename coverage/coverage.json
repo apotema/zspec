@@ -1,0 +1,14 @@
+{
+  "files": [
+    {"file": "/home/runner/work/zspec/zspec/src/matchers.zig", "percent_covered": "74.85", "covered_lines": "128", "total_lines": "171"},
+    {"file": "/home/runner/work/zspec/zspec/src/factory.zig", "percent_covered": "100.00", "covered_lines": "118", "total_lines": "118"},
+    {"file": "/home/runner/work/zspec/zspec/src/zspec.zig", "percent_covered": "91.67", "covered_lines": "55", "total_lines": "60"}
+  ],
+  "percent_covered": "86.25",
+  "covered_lines": 301,
+  "total_lines": 349,
+  "percent_low": 25,
+  "percent_high": 75,
+  "command": "test",
+  "date": "2025-11-27 16:52:24"
+}

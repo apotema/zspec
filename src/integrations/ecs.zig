@@ -98,7 +98,7 @@ pub fn ComponentSet(comptime T: type) type {
 ///     .velocity = VelocityFactory.build(.{ .dx = 5.0 }),
 /// });
 /// ```
-pub fn createEntity(registry: anytype, components: anytype) u32 {
+pub fn createEntity(registry: anytype, components: anytype) EntityType(@TypeOf(registry)) {
     const entity = registry.create();
 
     inline for (std.meta.fields(@TypeOf(components))) |field| {
@@ -107,6 +107,16 @@ pub fn createEntity(registry: anytype, components: anytype) u32 {
     }
 
     return entity;
+}
+
+/// Helper to extract Entity type from a registry pointer type
+fn EntityType(comptime RegistryPtrType: type) type {
+    // Get the underlying struct type from the pointer
+    const RegistryType = std.meta.Child(RegistryPtrType);
+    // Get the create function and extract its return type
+    const create_fn = @field(RegistryType, "create");
+    const create_fn_info = @typeInfo(@TypeOf(create_fn));
+    return create_fn_info.@"fn".return_type.?;
 }
 
 /// Create multiple entities with the same component configuration
@@ -119,13 +129,14 @@ pub fn createEntity(registry: anytype, components: anytype) u32 {
 /// });
 /// defer std.testing.allocator.free(entities);
 /// ```
-pub fn createEntities(registry: anytype, count: usize, components: anytype) []u32 {
+pub fn createEntities(registry: anytype, count: usize, components: anytype) []EntityType(@TypeOf(registry)) {
     return createEntitiesWith(registry, count, components, std.testing.allocator);
 }
 
 /// Create multiple entities with custom allocator
-pub fn createEntitiesWith(registry: anytype, count: usize, components: anytype, allocator: std.mem.Allocator) []u32 {
-    const entities = allocator.alloc(u32, count) catch @panic("failed to allocate entities array");
+pub fn createEntitiesWith(registry: anytype, count: usize, components: anytype, allocator: std.mem.Allocator) []EntityType(@TypeOf(registry)) {
+    const Entity = EntityType(@TypeOf(registry));
+    const entities = allocator.alloc(Entity, count) catch @panic("failed to allocate entities array");
 
     for (entities) |*entity| {
         entity.* = createEntity(registry, components);
@@ -157,7 +168,7 @@ pub fn createEntitiesUnique(
     registry: anytype,
     count: usize,
     comptime Builder: type,
-) []u32 {
+) []EntityType(@TypeOf(registry)) {
     return createEntitiesUniqueWith(registry, count, Builder, std.testing.allocator);
 }
 
@@ -167,8 +178,9 @@ pub fn createEntitiesUniqueWith(
     count: usize,
     comptime Builder: type,
     allocator: std.mem.Allocator,
-) []u32 {
-    const entities = allocator.alloc(u32, count) catch @panic("failed to allocate entities array");
+) []EntityType(@TypeOf(registry)) {
+    const Entity = EntityType(@TypeOf(registry));
+    const entities = allocator.alloc(Entity, count) catch @panic("failed to allocate entities array");
 
     for (entities) |*entity| {
         const components = Builder.build();
@@ -230,27 +242,28 @@ pub fn ComponentFactory(comptime ComponentType: type, comptime Factory: type) ty
         }
 
         /// Create and attach component to an existing entity
-        pub fn attach(registry: anytype, entity: u32, overrides: anytype) void {
+        pub fn attach(registry: anytype, entity: anytype, overrides: anytype) void {
             const component = build(overrides);
             registry.add(entity, component);
         }
 
         /// Create and attach component with custom allocator
-        pub fn attachWith(registry: anytype, entity: u32, allocator: std.mem.Allocator, overrides: anytype) void {
+        pub fn attachWith(registry: anytype, entity: anytype, allocator: std.mem.Allocator, overrides: anytype) void {
             const component = buildWith(allocator, overrides);
             registry.add(entity, component);
         }
 
         /// Create a new entity with this component
-        pub fn createEntityWith(registry: anytype, overrides: anytype) u32 {
+        pub fn createEntityWith(registry: anytype, overrides: anytype) EntityType(@TypeOf(registry)) {
             const entity = registry.create();
             attach(registry, entity, overrides);
             return entity;
         }
 
         /// Create multiple entities with this component
-        pub fn createEntitiesWith(registry: anytype, count: usize, overrides: anytype) []u32 {
-            const entities = std.testing.allocator.alloc(u32, count) catch @panic("failed to allocate entities");
+        pub fn createEntitiesWith(registry: anytype, count: usize, overrides: anytype) []EntityType(@TypeOf(registry)) {
+            const Entity = EntityType(@TypeOf(registry));
+            const entities = std.testing.allocator.alloc(Entity, count) catch @panic("failed to allocate entities");
 
             for (entities) |*e| {
                 e.* = createEntityWith(registry, overrides);

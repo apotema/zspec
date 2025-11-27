@@ -234,7 +234,7 @@ Use `Ctrl+Shift+B` / `Cmd+Shift+B` to run the default test task.
 Debug configurations are available for LLDB debugger:
 
 1. Build tests with `zig build test`
-2. Use the Debug panel to select "Debug ZSpec Tests" or "Debug ZSpec Examples"
+2. Use the Debug panel to select "Debug ZSpec Tests"
 3. Set breakpoints and start debugging
 
 ## Environment Variables

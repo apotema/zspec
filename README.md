@@ -221,7 +221,7 @@ ZSpec includes VS Code configuration for an improved development experience. Ope
 To use the Test Explorer sidebar with ZSpec:
 
 1. Install the recommended extensions (Test Explorer UI + JUnit Test Adapter)
-2. Run `Tasks: Run Task` → `ZSpec: Run Tests (JUnit XML)` to generate test results
+2. Run tests with `Ctrl+Shift+B` (default task generates JUnit XML automatically)
 3. The Test Explorer will display your test results in the sidebar
 
 ### Tasks
@@ -234,7 +234,6 @@ Run tests directly from VS Code using the Command Palette (`Ctrl+Shift+P` / `Cmd
 - `Tasks: Run Task` → `ZSpec: Run Tests (Verbose)` - Run with verbose output
 - `Tasks: Run Task` → `ZSpec: Run Tests (Fail First)` - Stop on first failure
 - `Tasks: Run Task` → `ZSpec: Run Tests with Filter` - Run tests matching a pattern
-- `Tasks: Run Task` → `ZSpec: Run Tests (JUnit XML)` - Generate JUnit XML for Test Explorer
 
 ### Keyboard Shortcut
 

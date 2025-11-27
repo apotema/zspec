@@ -47,11 +47,7 @@ const expect = zspec.expect;
 const Factory = zspec.Factory;
 
 // Import the optional ECS integration module
-// In your actual code: const ECS = @import("zspec-ecs");
-// For this example, we use a mock since zig-ecs isn't a dependency
-const ECS = struct {
-    pub usingnamespace @import("../src/integrations/ecs.zig");
-};
+const ECS = @import("zspec-ecs");
 
 // Uncomment when you have zig-ecs as a dependency:
 // const ecs = @import("zig-ecs");
@@ -322,22 +318,9 @@ pub const BatchCreation = struct {
         defer arena.deinit();
         const alloc = arena.allocator();
 
-        // Create factory function that generates unique components per call
-        const createComponents = struct {
-            fn create() @TypeOf(.{
-                .position = PositionFactory.build(.{}),
-                .tag = TagFactory.buildWith(std.testing.allocator, .{}),
-            }) {
-                return .{
-                    .position = PositionFactory.build(.{}),
-                    .tag = TagFactory.buildWith(std.testing.allocator, .{}),
-                };
-            }
-        }.create;
-
         _ = alloc;
-        // Note: createEntitiesFromFactory not fully demonstrated here
-        // as it requires compile-time function evaluation
+        // Note: createEntitiesUnique demonstrates creating entities with unique
+        // component values using sequences and factory calls
     }
 };
 

@@ -1,0 +1,23 @@
+.{
+    .name = .menu,
+    .version = "0.1.0",
+    .fingerprint = 0x4a7b8c9d2e1f3a5b,
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "tests",
+        "README.md",
+    },
+    .dependencies = .{
+        // Reference parent zspec project (local path)
+        .zspec = .{
+            .path = "..",
+        },
+        // zigfsm from GitHub
+        .zigfsm = .{
+            .url = "https://github.com/cryptocode/zigfsm/archive/refs/heads/main.tar.gz",
+            .hash = "1220e5c49cf7ad313ae95f2ed7f0488c7f6ba7ac5e5b9ca9a23e0fa7b7ebdd36e0f0",
+        },
+    },
+}

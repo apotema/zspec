@@ -12,8 +12,15 @@ pub fn build(b: *std.Build) void {
     });
 
     // Optional ECS integration module
-    _ = b.addModule("zspec-ecs", .{
+    const zspec_ecs_mod = b.addModule("zspec-ecs", .{
         .root_source_file = b.path("src/integrations/ecs.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // Optional FSM integration module
+    const zspec_fsm_mod = b.addModule("zspec-fsm", .{
+        .root_source_file = b.path("src/integrations/fsm.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -58,19 +65,31 @@ pub fn build(b: *std.Build) void {
         .{ .name = "examples-nested", .path = "examples/nested_contexts_test.zig" },
         .{ .name = "examples-matchers", .path = "examples/matchers_test.zig" },
         .{ .name = "examples-factory", .path = "examples/factory_test.zig" },
+        .{ .name = "examples-ecs", .path = "examples/ecs_integration_test.zig" },
+        .{ .name = "examples-fsm", .path = "examples/fsm_integration_test.zig" },
     };
 
     const examples_all_step = b.step("examples", "Run all examples");
 
     for (example_files) |ex| {
+        // Integration examples need the optional modules
+        const needs_integrations = std.mem.indexOf(u8, ex.name, "-ecs") != null or
+            std.mem.indexOf(u8, ex.name, "-fsm") != null;
+
+        const imports = if (needs_integrations) &[_]std.Build.Module.Import{
+            .{ .name = "zspec", .module = zspec_mod },
+            .{ .name = "zspec-ecs", .module = zspec_ecs_mod },
+            .{ .name = "zspec-fsm", .module = zspec_fsm_mod },
+        } else &[_]std.Build.Module.Import{
+            .{ .name = "zspec", .module = zspec_mod },
+        };
+
         const ex_test = b.addTest(.{
             .root_module = b.createModule(.{
                 .root_source_file = b.path(ex.path),
                 .target = target,
                 .optimize = optimize,
-                .imports = &.{
-                    .{ .name = "zspec", .module = zspec_mod },
-                },
+                .imports = imports,
             }),
             .test_runner = .{ .path = b.path("src/runner.zig"), .mode = .simple },
         });

@@ -1,0 +1,60 @@
+name: Coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: '0.15.1'
+
+      - name: Install kcov dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            binutils-dev \
+            libcurl4-openssl-dev \
+            zlib1g-dev \
+            libdw-dev \
+            libiberty-dev \
+            cmake \
+            ninja-build
+
+      - name: Build and install kcov
+        run: |
+          git clone https://github.com/SimonKagstrom/kcov.git
+          cd kcov
+          mkdir build && cd build
+          cmake -G Ninja ..
+          ninja
+          sudo ninja install
+
+      - name: Run tests with coverage
+        run: |
+          zig test src/zspec.zig \
+            --test-cmd kcov \
+            --test-cmd --include-pattern=/src/ \
+            --test-cmd coverage \
+            --test-cmd-bin
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          directory: ./coverage
+          fail_ci_if_error: false
+        continue-on-error: true

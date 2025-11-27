@@ -1,5 +1,9 @@
 # ZSpec
 
+[![CI](https://github.com/apotema/zspec/actions/workflows/ci.yml/badge.svg)](https://github.com/apotema/zspec/actions/workflows/ci.yml)
+[![Coverage](https://github.com/apotema/zspec/actions/workflows/coverage.yml/badge.svg)](https://github.com/apotema/zspec/actions/workflows/coverage.yml)
+[![codecov](https://codecov.io/gh/apotema/zspec/branch/main/graph/badge.svg)](https://codecov.io/gh/apotema/zspec)
+
 RSpec-like testing framework for Zig.
 
 ## Features
@@ -208,6 +212,17 @@ zig build example   # Run example tests
 - `TEST_VERBOSE=true` - Show each test result (default: true)
 - `TEST_FAIL_FIRST=true` - Stop on first failure
 - `TEST_FILTER=pattern` - Only run tests matching pattern
+
+## Code Coverage
+
+ZSpec supports code coverage using external tools like kcov (Linux).
+
+```bash
+# Run tests with coverage
+kcov --include-pattern=/src/ coverage ./zig-out/bin/test
+```
+
+**[📖 Full Code Coverage Guide](docs/code-coverage.md)**
 
 ## License
 

@@ -73,15 +73,34 @@ const zigfsm = struct {
             }
 
             pub fn deinit(self: *Self) void {
-                self.transitions.deinit();
+                // Zig 0.15+ requires allocator parameter
+                if (@hasDecl(std.ArrayList(Transition), "deinit")) {
+                    if (@typeInfo(@TypeOf(std.ArrayList(Transition).deinit)).@"fn".params.len == 2) {
+                        self.transitions.deinit(self.allocator);
+                    } else {
+                        self.transitions.deinit();
+                    }
+                } else {
+                    self.transitions.deinit();
+                }
             }
 
             pub fn addTransition(self: *Self, from: StateT, to: StateT) !void {
-                try self.transitions.append(.{ .event = null, .from = from, .to = to });
+                // Zig 0.15+ requires allocator parameter
+                if (@typeInfo(@TypeOf(std.ArrayList(Transition).append)).@"fn".params.len == 3) {
+                    try self.transitions.append(self.allocator, .{ .event = null, .from = from, .to = to });
+                } else {
+                    try self.transitions.append(.{ .event = null, .from = from, .to = to });
+                }
             }
 
             pub fn addEventAndTransition(self: *Self, event: EventT, from: StateT, to: StateT) !void {
-                try self.transitions.append(.{ .event = event, .from = from, .to = to });
+                // Zig 0.15+ requires allocator parameter
+                if (@typeInfo(@TypeOf(std.ArrayList(Transition).append)).@"fn".params.len == 3) {
+                    try self.transitions.append(self.allocator, .{ .event = event, .from = from, .to = to });
+                } else {
+                    try self.transitions.append(.{ .event = event, .from = from, .to = to });
+                }
             }
 
             pub fn do(self: *Self, event: EventT) !void {

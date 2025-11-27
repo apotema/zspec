@@ -555,8 +555,12 @@ test "factory sequenceFmt" {
         .email = sequenceFmt("user{d}@example.com"),
     });
 
-    const user1 = UserFactory.build(.{});
-    const user2 = UserFactory.build(.{});
+    // Use arena allocator since sequenceFmt allocates strings
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    const user1 = UserFactory.buildWith(arena.allocator(), .{});
+    const user2 = UserFactory.buildWith(arena.allocator(), .{});
 
     try std.testing.expectEqualStrings("user1@example.com", user1.email);
     try std.testing.expectEqualStrings("user2@example.com", user2.email);

@@ -222,3 +222,9 @@ test "expect.toHaveLength" {
     try expect.toHaveLength(&arr, 3);
     try expect.toHaveLength("hello", 5);
 }
+
+// Include tests from submodules
+test {
+    _ = @import("factory.zig");
+    _ = @import("matchers.zig");
+}

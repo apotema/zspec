@@ -210,9 +210,19 @@ zig build example   # Run example tests
 
 ZSpec includes VS Code configuration for an improved development experience. Open the project in VS Code and you'll get:
 
-### Recommended Extension
+### Recommended Extensions
 
 - **[Zig Language](https://marketplace.visualstudio.com/items?itemName=ziglang.vscode-zig)** - Zig language support with ZLS
+- **[Test Explorer UI](https://marketplace.visualstudio.com/items?itemName=hbenl.vscode-test-explorer)** - Test Explorer sidebar panel
+- **[JUnit Test Adapter](https://marketplace.visualstudio.com/items?itemName=usernamehw.vscode-junit-test-adapter)** - JUnit XML support for Test Explorer
+
+### Test Explorer
+
+To use the Test Explorer sidebar with ZSpec:
+
+1. Install the recommended extensions (Test Explorer UI + JUnit Test Adapter)
+2. Run `Tasks: Run Task` → `ZSpec: Run Tests (JUnit XML)` to generate test results
+3. The Test Explorer will display your test results in the sidebar
 
 ### Tasks
 
@@ -224,6 +234,7 @@ Run tests directly from VS Code using the Command Palette (`Ctrl+Shift+P` / `Cmd
 - `Tasks: Run Task` → `ZSpec: Run Tests (Verbose)` - Run with verbose output
 - `Tasks: Run Task` → `ZSpec: Run Tests (Fail First)` - Stop on first failure
 - `Tasks: Run Task` → `ZSpec: Run Tests with Filter` - Run tests matching a pattern
+- `Tasks: Run Task` → `ZSpec: Run Tests (JUnit XML)` - Generate JUnit XML for Test Explorer
 
 ### Keyboard Shortcut
 

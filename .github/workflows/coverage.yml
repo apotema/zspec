@@ -46,6 +46,27 @@ jobs:
             --test-cmd coverage \
             --test-cmd-bin
 
+      - name: Extract coverage percentage
+        id: coverage
+        run: |
+          # Parse coverage from kcov JSON output
+          COVERAGE=$(cat coverage/test/coverage.json | jq -r '.percent_covered' | cut -d'.' -f1)
+          echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
+          echo "Coverage: $COVERAGE%"
+
+      - name: Create coverage badge
+        if: github.ref == 'refs/heads/main'
+        uses: schneegans/dynamic-badges-action@v1.7.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: ${{ vars.COVERAGE_GIST_ID }}
+          filename: coverage.json
+          label: coverage
+          message: ${{ steps.coverage.outputs.percentage }}%
+          valColorRange: ${{ steps.coverage.outputs.percentage }}
+          maxColorRange: 100
+          minColorRange: 0
+
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:

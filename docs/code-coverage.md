@@ -146,6 +146,35 @@ fn myFunction() void {
 
 A [modified fork of kcov](https://zig.news/liyu1981/tiny-change-to-kcov-for-better-covering-zig-hjm) exists that automatically ignores Zig's `unreachable` and `@panic` statements.
 
+## Dynamic Coverage Badge
+
+To display a coverage percentage badge in your README:
+
+### 1. Create a GitHub Gist
+
+Create a new **public** gist at https://gist.github.com with any content (it will be overwritten).
+Copy the Gist ID from the URL (e.g., `https://gist.github.com/username/abc123` → `abc123`).
+
+### 2. Create a Personal Access Token
+
+1. Go to GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
+2. Generate a new token with `gist` scope
+3. Copy the token
+
+### 3. Add Repository Secrets/Variables
+
+In your repository settings:
+- Add secret `GIST_TOKEN` with your personal access token
+- Add variable `COVERAGE_GIST_ID` with your Gist ID
+
+### 4. Add Badge to README
+
+```markdown
+[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/USERNAME/GIST_ID/raw/coverage.json)](https://github.com/USERNAME/REPO/actions/workflows/coverage.yml)
+```
+
+Replace `USERNAME`, `GIST_ID`, and `REPO` with your values.
+
 ## References
 
 - [Code Coverage for Zig - Zig NEWS](https://zig.news/squeek564/code-coverage-for-zig-1dk1)

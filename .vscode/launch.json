@@ -1,0 +1,15 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug ZSpec Tests",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${command:zig.getTestBinary}",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "TEST_VERBOSE": "true"
+            }
+        }
+    ]
+}

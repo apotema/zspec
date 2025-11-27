@@ -206,6 +206,47 @@ zig build test      # Run zspec's own tests
 zig build example   # Run example tests
 ```
 
+## VS Code Integration
+
+ZSpec includes VS Code configuration for an improved development experience. Open the project in VS Code and you'll get:
+
+### Recommended Extensions
+
+- **[Zig Language](https://marketplace.visualstudio.com/items?itemName=ziglang.vscode-zig)** - Zig language support with ZLS
+- **[Test Explorer UI](https://marketplace.visualstudio.com/items?itemName=hbenl.vscode-test-explorer)** - Test Explorer sidebar panel
+- **[JUnit Test Adapter](https://marketplace.visualstudio.com/items?itemName=usernamehw.vscode-junit-test-adapter)** - JUnit XML support for Test Explorer
+
+### Test Explorer
+
+To use the Test Explorer sidebar with ZSpec:
+
+1. Install the recommended extensions (Test Explorer UI + JUnit Test Adapter)
+2. Run tests with `Ctrl+Shift+B` (default task generates JUnit XML automatically)
+3. The Test Explorer will display your test results in the sidebar
+
+### Tasks
+
+Run tests directly from VS Code using the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`):
+
+- `Tasks: Run Task` → `ZSpec: Run All Tests` - Run unit tests
+- `Tasks: Run Task` → `ZSpec: Run Example Tests` - Run example test file (tests/example_test.zig)
+- `Tasks: Run Task` → `ZSpec: Run All Examples` - Run all example files (examples/*.zig)
+- `Tasks: Run Task` → `ZSpec: Run Tests (Verbose)` - Run with verbose output
+- `Tasks: Run Task` → `ZSpec: Run Tests (Fail First)` - Stop on first failure
+- `Tasks: Run Task` → `ZSpec: Run Tests with Filter` - Run tests matching a pattern
+
+### Keyboard Shortcut
+
+Use `Ctrl+Shift+B` / `Cmd+Shift+B` to run the default test task.
+
+### Debug Configuration
+
+Debug configurations are available for LLDB debugger:
+
+1. Build tests with `zig build test`
+2. Use the Debug panel to select "Debug ZSpec Tests"
+3. Set breakpoints and start debugging
+
 ## Environment Variables
 
 - `TEST_VERBOSE=true` - Show each test result (default: true)

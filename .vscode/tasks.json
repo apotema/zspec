@@ -1,0 +1,126 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "ZSpec: Run All Tests",
+            "type": "shell",
+            "command": "zig",
+            "args": ["build", "test"],
+            "options": {
+                "env": {
+                    "TEST_JUNIT_PATH": "${workspaceFolder}/test-results.xml"
+                }
+            },
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": ["$zig"]
+        },
+        {
+            "label": "ZSpec: Run Example Tests",
+            "type": "shell",
+            "command": "zig",
+            "args": ["build", "example"],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": ["$zig"]
+        },
+        {
+            "label": "ZSpec: Run All Examples",
+            "type": "shell",
+            "command": "zig",
+            "args": ["build", "examples"],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": ["$zig"]
+        },
+        {
+            "label": "ZSpec: Run Tests (Verbose)",
+            "type": "shell",
+            "command": "zig",
+            "args": ["build", "test"],
+            "options": {
+                "env": {
+                    "TEST_VERBOSE": "true"
+                }
+            },
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": ["$zig"]
+        },
+        {
+            "label": "ZSpec: Run Tests (Fail First)",
+            "type": "shell",
+            "command": "zig",
+            "args": ["build", "test"],
+            "options": {
+                "env": {
+                    "TEST_FAIL_FIRST": "true"
+                }
+            },
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": ["$zig"]
+        },
+        {
+            "label": "ZSpec: Run Tests with Filter",
+            "type": "shell",
+            "command": "zig",
+            "args": ["build", "test"],
+            "options": {
+                "env": {
+                    "TEST_FILTER": "${input:testFilter}"
+                }
+            },
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": ["$zig"]
+        }
+    ],
+    "inputs": [
+        {
+            "id": "testFilter",
+            "type": "promptString",
+            "description": "Enter test filter pattern",
+            "default": ""
+        }
+    ]
+}

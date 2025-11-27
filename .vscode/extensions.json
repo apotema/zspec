@@ -1,0 +1,7 @@
+{
+    "recommendations": [
+        "ziglang.vscode-zig",
+        "hbenl.vscode-test-explorer",
+        "usernamehw.vscode-junit-test-adapter"
+    ]
+}

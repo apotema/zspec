@@ -1,6 +1,6 @@
 .{
     .name = .zspec,
-    .version = "0.2.1",
+    .version = "0.2.2",
     .fingerprint = 0x940ac7516d8ba28d,
     .paths = .{
         "build.zig",

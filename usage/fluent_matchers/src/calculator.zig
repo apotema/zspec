@@ -6,12 +6,10 @@ const std = @import("std");
 
 pub const Calculator = struct {
     result: i64,
-    history: []const u8,
 
     pub fn init() Calculator {
         return .{
             .result = 0,
-            .history = "",
         };
     }
 

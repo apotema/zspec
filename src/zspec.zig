@@ -16,7 +16,7 @@ pub const Factory = @import("factory.zig");
 
 // Re-export fluent matchers module
 pub const matchers = @import("matchers.zig");
-/// Fluent expect function: try expectFluent(value).to.equal(expected)
+/// Fluent expect function: try expectFluent(value).to().equal(expected)
 pub const expectFluent = matchers.expect;
 
 /// Memoized lazy value that is computed once per test and cached.

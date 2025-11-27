@@ -359,6 +359,18 @@ test "expect().to().beLessThan" {
     try expect(@as(i32, 10)).notTo().beLessThan(5);
 }
 
+test "expect().to().beGreaterThanOrEqual" {
+    try expect(@as(i32, 10)).to().beGreaterThanOrEqual(10);
+    try expect(@as(i32, 10)).to().beGreaterThanOrEqual(5);
+    try expect(@as(i32, 5)).notTo().beGreaterThanOrEqual(10);
+}
+
+test "expect().to().beLessThanOrEqual" {
+    try expect(@as(i32, 10)).to().beLessThanOrEqual(10);
+    try expect(@as(i32, 5)).to().beLessThanOrEqual(10);
+    try expect(@as(i32, 10)).notTo().beLessThanOrEqual(5);
+}
+
 test "expect().to().beBetween" {
     try expect(@as(i32, 5)).to().beBetween(1, 10);
     try expect(@as(i32, 0)).notTo().beBetween(1, 10);

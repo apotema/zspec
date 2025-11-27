@@ -211,6 +211,40 @@ zig build example   # Run example tests
 - `TEST_VERBOSE=true` - Show each test result (default: true)
 - `TEST_FAIL_FIRST=true` - Stop on first failure
 - `TEST_FILTER=pattern` - Only run tests matching pattern
+- `TEST_JUNIT_PATH=path` - Generate JUnit XML report at specified path
+
+## CI Integration
+
+ZSpec can generate JUnit XML reports for integration with CI systems like Jenkins, GitHub Actions, GitLab CI, and others.
+
+```bash
+# Generate JUnit XML report
+TEST_JUNIT_PATH=test-results.xml zig build test
+```
+
+### GitHub Actions Example
+
+```yaml
+- name: Run tests
+  run: TEST_JUNIT_PATH=test-results.xml zig build test
+
+- name: Publish Test Results
+  uses: EnricoMi/publish-unit-test-result-action@v2
+  if: always()
+  with:
+    files: test-results.xml
+```
+
+### GitLab CI Example
+
+```yaml
+test:
+  script:
+    - TEST_JUNIT_PATH=test-results.xml zig build test
+  artifacts:
+    reports:
+      junit: test-results.xml
+```
 
 ## Code Coverage
 

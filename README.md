@@ -221,7 +221,7 @@ ZSpec supports code coverage using external tools like kcov (Linux).
 kcov --include-pattern=/src/ coverage ./zig-out/bin/test
 ```
 
-**[📖 Full Code Coverage Guide](docs/code-coverage.md)**
+**[📖 Full Code Coverage Guide](https://github.com/apotema/zspec/wiki/Code-Coverage)**
 
 ## License
 

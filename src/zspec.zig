@@ -14,6 +14,11 @@ const builtin = @import("builtin");
 // Re-export Factory module
 pub const Factory = @import("factory.zig");
 
+// Re-export fluent matchers module
+pub const matchers = @import("matchers.zig");
+/// Fluent expect function: try expectFluent(value).to().equal(expected)
+pub const expectFluent = matchers.expect;
+
 /// Memoized lazy value that is computed once per test and cached.
 /// Similar to RSpec's `let`.
 pub fn Let(comptime T: type, comptime init_fn: fn () T) type {
@@ -216,4 +221,10 @@ test "expect.toHaveLength" {
     const arr = [_]i32{ 1, 2, 3 };
     try expect.toHaveLength(&arr, 3);
     try expect.toHaveLength("hello", 5);
+}
+
+// Include tests from submodules
+test {
+    _ = @import("factory.zig");
+    _ = @import("matchers.zig");
 }

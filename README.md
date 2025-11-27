@@ -219,8 +219,8 @@ ZSpec includes VS Code configuration for an improved development experience. Ope
 Run tests directly from VS Code using the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`):
 
 - `Tasks: Run Task` → `ZSpec: Run All Tests` - Run unit tests
-- `Tasks: Run Task` → `ZSpec: Run Examples` - Run example tests
-- `Tasks: Run Task` → `ZSpec: Run All Examples` - Run all example files
+- `Tasks: Run Task` → `ZSpec: Run Example Tests` - Run example test file (tests/example_test.zig)
+- `Tasks: Run Task` → `ZSpec: Run All Examples` - Run all example files (examples/*.zig)
 - `Tasks: Run Task` → `ZSpec: Run Tests (Verbose)` - Run with verbose output
 - `Tasks: Run Task` → `ZSpec: Run Tests (Fail First)` - Stop on first failure
 - `Tasks: Run Task` → `ZSpec: Run Tests with Filter` - Run tests matching a pattern

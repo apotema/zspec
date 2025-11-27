@@ -15,6 +15,7 @@ zig build examples  # Run all example files (examples/*.zig)
 - `TEST_VERBOSE=true` - Show each test result (default: true)
 - `TEST_FAIL_FIRST=true` - Stop on first failure
 - `TEST_FILTER=pattern` - Only run tests matching pattern
+- `TEST_JUNIT_PATH=path` - Generate JUnit XML report at specified path (for CI integration)
 
 ## Architecture
 
@@ -62,6 +63,12 @@ ZSpec is an RSpec-like testing framework for Zig with these main components:
 - Hooks are identified by test name suffixes: `tests:beforeAll`, `tests:afterAll`, `tests:before`, `tests:after`
 - Scoped hooks: hooks only apply to tests within their containing struct (determined by comparing name prefixes)
 - Tracks slowest tests and supports colorized output
+- JUnit XML report generation for CI integration (via `TEST_JUNIT_PATH` env var)
+
+**src/junit.zig** - JUnit XML report writer:
+- `JUnitWriter` - Collects test results and generates JUnit XML format
+- `TestResult` - Struct representing a single test result (name, classname, time, status, failure info)
+- Compatible with Jenkins, GitHub Actions, GitLab CI, and other CI systems
 
 ## Test Organization Pattern
 

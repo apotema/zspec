@@ -9,6 +9,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const junit = @import("junit.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -28,11 +29,21 @@ pub fn main() !void {
 
     const allocator = fba.allocator();
 
+    // Use page allocator for JUnit writer (may need more memory for results)
+    const page_allocator = std.heap.page_allocator;
+
     const env = Env.init(allocator);
     defer env.deinit(allocator);
 
     var slowest = SlowTracker.init(allocator, 5);
     defer slowest.deinit();
+
+    // Initialize JUnit writer if path is configured
+    var junit_writer: ?junit.JUnitWriter = if (env.junit_path != null)
+        junit.JUnitWriter.init(page_allocator, "zspec")
+    else
+        null;
+    defer if (junit_writer) |*jw| jw.deinit();
 
     var pass: usize = 0;
     var fail: usize = 0;
@@ -170,6 +181,33 @@ pub fn main() !void {
             const ms = @as(f64, @floatFromInt(ns_taken)) / 1_000_000.0;
             printer.status(status, "{s} ({d:.2}ms)\n", .{ friendly_name, ms });
         }
+
+        // Record result for JUnit XML output
+        if (junit_writer) |*jw| {
+            const junit_status: junit.TestResult.Status = switch (status) {
+                .pass => .passed,
+                .fail => .failed,
+                .skip => .skipped,
+                else => .passed,
+            };
+
+            const failure_message: ?[]const u8 = if (result) |_|
+                null
+            else |err| switch (err) {
+                error.SkipZigTest => null,
+                error.BeforeHookFailed => "before hook failed",
+                else => @errorName(err),
+            };
+
+            jw.addResult(.{
+                .name = friendly_name,
+                .classname = junit.extractClassname(t.name),
+                .time_ns = ns_taken,
+                .status = junit_status,
+                .failure_message = failure_message,
+                .failure_type = if (failure_message != null) "TestError" else null,
+            }) catch {};
+        }
     }
 
     // Run all afterAll hooks
@@ -193,6 +231,17 @@ pub fn main() !void {
     printer.fmt("\n", .{});
     try slowest.display(printer);
     printer.fmt("\n", .{});
+
+    // Write JUnit XML report if configured
+    if (junit_writer) |*jw| {
+        if (env.junit_path) |path| {
+            jw.writeToFile(path) catch |err| {
+                printer.status(.fail, "Failed to write JUnit XML to {s}: {}\n", .{ path, err });
+            };
+            printer.fmt("JUnit XML report written to: {s}\n", .{path});
+        }
+    }
+
     std.posix.exit(if (fail == 0) 0 else 1);
 }
 
@@ -297,18 +346,23 @@ const Env = struct {
     verbose: bool,
     fail_first: bool,
     filter: ?[]const u8,
+    junit_path: ?[]const u8,
 
     fn init(alloc: Allocator) Env {
         return .{
             .verbose = readEnvBool(alloc, "TEST_VERBOSE", true),
             .fail_first = readEnvBool(alloc, "TEST_FAIL_FIRST", false),
             .filter = readEnv(alloc, "TEST_FILTER"),
+            .junit_path = readEnv(alloc, "TEST_JUNIT_PATH"),
         };
     }
 
     fn deinit(self: Env, alloc: Allocator) void {
         if (self.filter) |f| {
             alloc.free(f);
+        }
+        if (self.junit_path) |p| {
+            alloc.free(p);
         }
     }
 

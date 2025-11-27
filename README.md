@@ -206,6 +206,37 @@ zig build test      # Run zspec's own tests
 zig build example   # Run example tests
 ```
 
+## VS Code Integration
+
+ZSpec includes VS Code configuration for an improved development experience. Open the project in VS Code and you'll get:
+
+### Recommended Extension
+
+- **[Zig Language](https://marketplace.visualstudio.com/items?itemName=ziglang.vscode-zig)** - Zig language support with ZLS
+
+### Tasks
+
+Run tests directly from VS Code using the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`):
+
+- `Tasks: Run Task` → `ZSpec: Run All Tests` - Run unit tests
+- `Tasks: Run Task` → `ZSpec: Run Examples` - Run example tests
+- `Tasks: Run Task` → `ZSpec: Run All Examples` - Run all example files
+- `Tasks: Run Task` → `ZSpec: Run Tests (Verbose)` - Run with verbose output
+- `Tasks: Run Task` → `ZSpec: Run Tests (Fail First)` - Stop on first failure
+- `Tasks: Run Task` → `ZSpec: Run Tests with Filter` - Run tests matching a pattern
+
+### Keyboard Shortcut
+
+Use `Ctrl+Shift+B` / `Cmd+Shift+B` to run the default test task.
+
+### Debug Configuration
+
+Debug configurations are available for LLDB debugger:
+
+1. Build tests with `zig build test`
+2. Use the Debug panel to select "Debug ZSpec Tests" or "Debug ZSpec Examples"
+3. Set breakpoints and start debugging
+
 ## Environment Variables
 
 - `TEST_VERBOSE=true` - Show each test result (default: true)

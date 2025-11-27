@@ -1,0 +1,9 @@
+{
+    "zig.buildArgs": ["test"],
+    "zig.zls.buildOnSave": true,
+    "zig.buildRunnerPath": "zig",
+    "files.associations": {
+        "*_zspec.zig": "zig",
+        "*_test.zig": "zig"
+    }
+}

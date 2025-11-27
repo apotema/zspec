@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug ZSpec Tests",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/zig-out/bin/test",
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "ZSpec: Run All Tests",
+            "env": {
+                "TEST_VERBOSE": "true"
+            }
+        },
+        {
+            "name": "Debug ZSpec Examples",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/zig-out/bin/example",
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "ZSpec: Run Examples",
+            "env": {
+                "TEST_VERBOSE": "true"
+            }
+        }
+    ]
+}

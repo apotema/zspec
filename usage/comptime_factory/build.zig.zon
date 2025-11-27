@@ -1,0 +1,17 @@
+.{
+    .name = .comptime_factory_example,
+    .version = "0.1.0",
+    .fingerprint = 0xdc21030ae6c57e58,
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "tests",
+    },
+    .dependencies = .{
+        // Reference parent zspec project (local path)
+        .zspec = .{
+            .path = "../..",
+        },
+    },
+}

@@ -50,7 +50,8 @@ pub fn main() !void {
     var skip: usize = 0;
     var leak: usize = 0;
 
-    const printer = Printer.init();
+    var printer = Printer.init(env.output_file);
+    defer printer.deinit();
     printer.fmt("\r\x1b[0K", .{}); // beginning of line and clear to end of line
 
     // Track which scopes have had beforeAll run
@@ -270,12 +271,34 @@ pub fn main() !void {
 }
 
 const Printer = struct {
-    fn init() Printer {
-        return .{};
+    file: ?std.fs.File,
+
+    fn init(output_path: ?[]const u8) Printer {
+        const file = if (output_path) |path|
+            std.fs.cwd().createFile(path, .{}) catch null
+        else
+            null;
+        return .{ .file = file };
     }
 
-    fn fmt(_: Printer, comptime format: []const u8, args: anytype) void {
+    fn deinit(self: *Printer) void {
+        if (self.file) |f| {
+            f.close();
+        }
+    }
+
+    fn fmt(self: Printer, comptime format: []const u8, args: anytype) void {
         std.debug.print(format, args);
+        // Write to file, stripping ANSI escape codes
+        if (self.file) |f| {
+            var buf: [4096]u8 = undefined;
+            const output = std.fmt.bufPrint(&buf, format, args) catch return;
+            // Skip if it's just ANSI control sequences (starts with \x1b or \r)
+            if (output.len > 0 and (output[0] == '\x1b' or output[0] == '\r')) {
+                return;
+            }
+            _ = f.write(output) catch {};
+        }
     }
 
     fn status(self: Printer, s: Status, comptime format: []const u8, args: anytype) void {
@@ -287,8 +310,16 @@ const Printer = struct {
         };
         std.debug.print("{s}", .{color});
         std.debug.print(format, args);
-        self.fmt("\x1b[0m", .{});
+        std.debug.print("\x1b[0m", .{});
+
+        // Write to file without ANSI escape codes
+        if (self.file) |f| {
+            var buf: [4096]u8 = undefined;
+            const output = std.fmt.bufPrint(&buf, format, args) catch return;
+            _ = f.write(output) catch {};
+        }
     }
+
 };
 
 const Status = enum {
@@ -374,6 +405,7 @@ const Env = struct {
     detect_leaks: bool,
     fail_on_leak: bool,
     failed_only: bool,
+    output_file: ?[]const u8,
 
     fn init(alloc: Allocator) Env {
         return .{
@@ -384,6 +416,7 @@ const Env = struct {
             .detect_leaks = readEnvBool(alloc, "TEST_DETECT_LEAKS", true),
             .fail_on_leak = readEnvBool(alloc, "TEST_FAIL_ON_LEAK", true),
             .failed_only = readEnvBool(alloc, "TEST_FAILED_ONLY", false),
+            .output_file = readEnv(alloc, "TEST_OUTPUT_FILE"),
         };
     }
 
@@ -393,6 +426,9 @@ const Env = struct {
         }
         if (self.junit_path) |p| {
             alloc.free(p);
+        }
+        if (self.output_file) |f| {
+            alloc.free(f);
         }
     }
 

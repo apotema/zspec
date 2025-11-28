@@ -308,3 +308,28 @@ pub const FAILED_ONLY_MODE = struct {
         try expect.equal(42, 42);
     }
 };
+
+// Example: Output to File
+// Write test results to a file for CI/CD integration or logging.
+// Set TEST_OUTPUT_FILE=path/to/output.txt to enable.
+//
+// Usage:
+//   TEST_OUTPUT_FILE=test-results.txt zig build example
+//
+// This feature:
+// - Writes all test output to the specified file
+// - Strips ANSI escape codes for clean text output
+// - Still prints colorized output to terminal
+// - Useful for CI artifact collection and debugging
+pub const OUTPUT_TO_FILE = struct {
+    test "results can be saved to file" {
+        // Run with TEST_OUTPUT_FILE=results.txt to save output
+        try expect.toBeTrue(true);
+    }
+
+    test "file output strips color codes" {
+        // ANSI escape codes are removed from file output
+        // but colors still appear in terminal
+        try expect.equal(1 + 1, 2);
+    }
+};

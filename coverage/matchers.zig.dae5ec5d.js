@@ -403,5 +403,5 @@ var data = {lines:[
 {"lineNum":"  402","line":"}"},
 ]};
 var percent_low = 25;var percent_high = 75;
-var header = { "command" : "test", "date" : "2025-11-28 04:39:46", "instrumented" : 171, "covered" : 128,};
+var header = { "command" : "test", "date" : "2025-11-28 04:40:56", "instrumented" : 171, "covered" : 128,};
 var merged_data = [];

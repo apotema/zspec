@@ -155,9 +155,15 @@ pub fn main() !void {
 
         const ns_taken = slowest.endTiming(friendly_name);
 
-        if (std.testing.allocator_instance.deinit() == .leak) {
+        // Check for memory leaks if enabled
+        const leak_check = std.testing.allocator_instance.deinit();
+        if (env.detect_leaks and leak_check == .leak) {
             leak += 1;
-            printer.status(.fail, "\n{s}\n\"{s}\" - Memory Leak\n{s}\n", .{ BORDER, friendly_name, BORDER });
+            printer.status(.fail, "\n{s}\n\"{s}\" - Memory Leak Detected\n{s}\n", .{ BORDER, friendly_name, BORDER });
+            if (env.fail_on_leak) {
+                status = .fail;
+                fail += 1;
+            }
         }
 
         if (result) |_| {
@@ -252,7 +258,9 @@ pub fn main() !void {
         }
     }
 
-    std.posix.exit(if (fail == 0) 0 else 1);
+    // Exit with failure if tests failed or if leaks detected with fail_on_leak enabled
+    const should_fail = fail > 0 or (env.fail_on_leak and leak > 0);
+    std.posix.exit(if (should_fail) 1 else 0);
 }
 
 const Printer = struct {
@@ -357,6 +365,8 @@ const Env = struct {
     fail_first: bool,
     filter: ?[]const u8,
     junit_path: ?[]const u8,
+    detect_leaks: bool,
+    fail_on_leak: bool,
 
     fn init(alloc: Allocator) Env {
         return .{
@@ -364,6 +374,8 @@ const Env = struct {
             .fail_first = readEnvBool(alloc, "TEST_FAIL_FIRST", false),
             .filter = readEnv(alloc, "TEST_FILTER"),
             .junit_path = readEnv(alloc, "TEST_JUNIT_PATH"),
+            .detect_leaks = readEnvBool(alloc, "TEST_DETECT_LEAKS", true),
+            .fail_on_leak = readEnvBool(alloc, "TEST_FAIL_ON_LEAK", true),
         };
     }
 

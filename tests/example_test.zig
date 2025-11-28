@@ -232,3 +232,38 @@ pub const MATCHERS = struct {
         try expect.notToBeEmpty("hi");
     }
 };
+
+// Example: Memory Leak Detection
+// The test runner automatically detects memory leaks using std.testing.allocator.
+// Control via environment variables:
+//   TEST_DETECT_LEAKS=true (default) - Enable leak detection
+//   TEST_FAIL_ON_LEAK=true (default) - Fail tests that leak memory
+//
+// To intentionally create a leak for testing purposes:
+//   const leaked = allocator.alloc(u8, 100) catch unreachable;
+//   _ = leaked; // Never freed - will trigger leak detection
+pub const MEMORY_LEAK_DETECTION = struct {
+    test "properly cleaned up allocation does not leak" {
+        const data = try allocator.alloc(u8, 100);
+        defer allocator.free(data);
+        @memset(data, 0);
+        try expect.equal(data.len, 100);
+    }
+
+    test "multiple allocations properly freed" {
+        const allocs = try allocator.alloc([*]u8, 5);
+        defer allocator.free(allocs);
+
+        for (allocs, 0..) |_, i| {
+            const block = try allocator.alloc(u8, 64);
+            allocs[i] = block.ptr;
+        }
+
+        // Clean up in reverse order
+        for (allocs) |ptr| {
+            allocator.free(ptr[0..64]);
+        }
+
+        try expect.toBeTrue(true);
+    }
+};

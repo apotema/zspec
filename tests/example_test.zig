@@ -284,3 +284,27 @@ pub const MEMORY_LEAK_DETECTION = struct {
         try expect.toBeTrue(true);
     }
 };
+
+// Example: Failed-Only Output Mode
+// When running large test suites, you may want to only see failures.
+// Set TEST_FAILED_ONLY=true to hide passing test output.
+//
+// Usage:
+//   TEST_FAILED_ONLY=true zig build example
+//
+// This mode:
+// - Hides passing test output (green checkmarks)
+// - Shows only failed test details and stack traces
+// - Still shows the final summary (X of Y tests passed)
+// - Useful for CI/CD pipelines and large test suites
+pub const FAILED_ONLY_MODE = struct {
+    test "passing tests are hidden in failed-only mode" {
+        // This test passes and would be hidden with TEST_FAILED_ONLY=true
+        try expect.toBeTrue(true);
+    }
+
+    test "another passing test" {
+        // This test also passes
+        try expect.equal(42, 42);
+    }
+};

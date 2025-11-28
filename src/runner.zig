@@ -193,7 +193,13 @@ pub fn main() !void {
             },
         }
 
-        if (env.verbose) {
+        // Show test result based on verbose and failed_only settings
+        const should_show = if (env.failed_only)
+            status == .fail
+        else
+            env.verbose;
+
+        if (should_show) {
             const ms = @as(f64, @floatFromInt(ns_taken)) / 1_000_000.0;
             printer.status(status, "{s} ({d:.2}ms)\n", .{ friendly_name, ms });
         }
@@ -367,6 +373,7 @@ const Env = struct {
     junit_path: ?[]const u8,
     detect_leaks: bool,
     fail_on_leak: bool,
+    failed_only: bool,
 
     fn init(alloc: Allocator) Env {
         return .{
@@ -376,6 +383,7 @@ const Env = struct {
             .junit_path = readEnv(alloc, "TEST_JUNIT_PATH"),
             .detect_leaks = readEnvBool(alloc, "TEST_DETECT_LEAKS", true),
             .fail_on_leak = readEnvBool(alloc, "TEST_FAIL_ON_LEAK", true),
+            .failed_only = readEnvBool(alloc, "TEST_FAILED_ONLY", false),
         };
     }
 

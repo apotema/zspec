@@ -435,7 +435,9 @@ const SmartStackTrace = struct {
         }
     }
 
-    fn isFrameworkFrame(file_name: []const u8) bool {
+    /// Checks if a stack frame is from framework code (runner, expect, zspec, std lib).
+    /// Returns true for framework frames that should be filtered out of user-facing traces.
+    pub fn isFrameworkFrame(file_name: []const u8) bool {
         // Filter out zspec internals
         if (std.mem.indexOf(u8, file_name, "runner.zig")) |_| return true;
         if (std.mem.indexOf(u8, file_name, "zspec.zig")) |_| return true;
@@ -494,3 +496,36 @@ const SmartStackTrace = struct {
         }
     }
 };
+
+// Unit tests for SmartStackTrace
+test "isFrameworkFrame identifies runner.zig as framework" {
+    try std.testing.expect(SmartStackTrace.isFrameworkFrame("/path/to/src/runner.zig"));
+    try std.testing.expect(SmartStackTrace.isFrameworkFrame("runner.zig"));
+}
+
+test "isFrameworkFrame identifies zspec.zig as framework" {
+    try std.testing.expect(SmartStackTrace.isFrameworkFrame("/path/to/src/zspec.zig"));
+    try std.testing.expect(SmartStackTrace.isFrameworkFrame("zspec.zig"));
+}
+
+test "isFrameworkFrame identifies expect.zig as framework" {
+    try std.testing.expect(SmartStackTrace.isFrameworkFrame("/path/to/src/expect.zig"));
+    try std.testing.expect(SmartStackTrace.isFrameworkFrame("expect.zig"));
+}
+
+test "isFrameworkFrame identifies std library as framework" {
+    try std.testing.expect(SmartStackTrace.isFrameworkFrame("/usr/lib/zig/lib/std/testing.zig"));
+    try std.testing.expect(SmartStackTrace.isFrameworkFrame("/home/user/.zig/lib/std.zig"));
+}
+
+test "isFrameworkFrame returns false for user test files" {
+    try std.testing.expect(!SmartStackTrace.isFrameworkFrame("/project/tests/my_test.zig"));
+    try std.testing.expect(!SmartStackTrace.isFrameworkFrame("/project/src/calculator.zig"));
+    try std.testing.expect(!SmartStackTrace.isFrameworkFrame("user_code.zig"));
+}
+
+test "isFrameworkFrame returns false for user files with similar names" {
+    // Should not match partial names
+    try std.testing.expect(!SmartStackTrace.isFrameworkFrame("/project/my_runner_test.zig"));
+    try std.testing.expect(!SmartStackTrace.isFrameworkFrame("/project/expect_helper.zig"));
+}

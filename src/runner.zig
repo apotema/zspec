@@ -85,6 +85,16 @@ pub fn main() !void {
             }
         }
 
+        // Handle skip_ prefixed tests
+        if (isSkipped(t)) {
+            skip += 1;
+            const skip_name = extractTestName(t.name);
+            if (env.verbose) {
+                printer.status(.skip, "{s} (skipped)\n", .{skip_name});
+            }
+            continue;
+        }
+
         const friendly_name = blk: {
             const name = t.name;
             var it = std.mem.splitScalar(u8, name, '.');
@@ -418,6 +428,25 @@ fn isAfter(t: std.builtin.TestFn) bool {
 
 fn isHook(t: std.builtin.TestFn) bool {
     return isSetup(t) or isTeardown(t) or isBefore(t) or isAfter(t);
+}
+
+fn isSkipped(t: std.builtin.TestFn) bool {
+    // Check if the test name contains "skip_" after the ".test." marker
+    if (std.mem.indexOf(u8, t.name, ".test.skip_")) |_| {
+        return true;
+    }
+    return false;
+}
+
+fn extractTestName(name: []const u8) []const u8 {
+    var it = std.mem.splitScalar(u8, name, '.');
+    while (it.next()) |value| {
+        if (std.mem.eql(u8, value, "test")) {
+            const rest = it.rest();
+            return if (rest.len > 0) rest else name;
+        }
+    }
+    return name;
 }
 
 fn getScope(name: []const u8) []const u8 {

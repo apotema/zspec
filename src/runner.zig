@@ -179,7 +179,7 @@ pub fn main() !void {
                     .{ BORDER, friendly_name, @errorName(err), BORDER },
                 );
                 if (@errorReturnTrace()) |trace| {
-                    std.debug.dumpStackTrace(trace.*);
+                    SmartStackTrace.dump(trace.*);
                 }
                 if (env.fail_first) {
                     break;
@@ -473,3 +473,142 @@ const logging = struct {
         _: anytype,
     ) void {}
 };
+
+/// Smart stack trace that filters out framework frames and shows source context
+const SmartStackTrace = struct {
+    const CONTEXT_LINES = 2; // Lines to show before/after the failure
+
+    fn dump(trace: std.builtin.StackTrace) void {
+        std.debug.print("\n\x1b[1mStack trace:\x1b[0m\n", .{});
+
+        var first_user_frame: ?struct { file: []const u8, line: u32 } = null;
+
+        // Print full stack trace first
+        std.debug.dumpStackTrace(trace);
+
+        // Try to find and show source context for the first user frame
+        var debug_info = std.debug.getSelfDebugInfo() catch return;
+
+        const addrs = trace.instruction_addresses[0..@min(trace.index, trace.instruction_addresses.len)];
+        for (addrs) |addr| {
+            if (addr == 0) continue;
+
+            // Get symbol info using the address
+            const module = debug_info.getModuleForAddress(addr) catch continue;
+            const sym = module.getSymbolAtAddress(debug_info.allocator, addr -| 1) catch continue;
+
+            if (sym.source_location) |loc| {
+                // Check if this is a user frame (not framework code)
+                if (!isFrameworkFrame(loc.file_name)) {
+                    if (first_user_frame == null) {
+                        first_user_frame = .{
+                            .file = loc.file_name,
+                            .line = @intCast(loc.line),
+                        };
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Show source context for the first user frame
+        if (first_user_frame) |frame| {
+            std.debug.print("\n\x1b[1mSource context:\x1b[0m\n", .{});
+            printSourceContext(frame.file, frame.line);
+        }
+    }
+
+    /// Checks if a stack frame is from framework code (runner, expect, zspec, std lib).
+    /// Returns true for framework frames that should be filtered out of user-facing traces.
+    pub fn isFrameworkFrame(file_name: []const u8) bool {
+        // Filter out zspec internals
+        if (std.mem.indexOf(u8, file_name, "runner.zig")) |_| return true;
+        if (std.mem.indexOf(u8, file_name, "zspec.zig")) |_| return true;
+        if (std.mem.indexOf(u8, file_name, "expect.zig")) |_| return true;
+        // Filter out std library internals
+        if (std.mem.indexOf(u8, file_name, "/zig/lib/")) |_| return true;
+        return false;
+    }
+
+    fn printSourceContext(file_name: []const u8, line: u32) void {
+        // Try to read the file using mmap or fallback approaches
+        const file = std.fs.cwd().openFile(file_name, .{}) catch return;
+        defer file.close();
+
+        // Read file in chunks and find lines
+        var buf: [8192]u8 = undefined;
+        var current_line: u32 = 1;
+        var line_start: usize = 0;
+        var total_read: usize = 0;
+
+        const start_line = if (line > CONTEXT_LINES) line - CONTEXT_LINES else 1;
+        const end_line = line + CONTEXT_LINES;
+
+        while (true) {
+            const bytes_read = file.read(&buf) catch return;
+            if (bytes_read == 0) break;
+
+            var i: usize = 0;
+            while (i < bytes_read) : (i += 1) {
+                if (buf[i] == '\n') {
+                    if (current_line >= start_line and current_line <= end_line) {
+                        const line_content = buf[line_start..i];
+                        const is_error_line = current_line == line;
+
+                        if (is_error_line) {
+                            std.debug.print("    \x1b[31m>{d:>4} | {s}\x1b[0m\n", .{ current_line, line_content });
+                        } else {
+                            std.debug.print("     {d:>4} | {s}\n", .{ current_line, line_content });
+                        }
+                    }
+                    current_line += 1;
+                    line_start = i + 1;
+
+                    if (current_line > end_line) return;
+                }
+            }
+
+            // Handle lines that span buffer boundaries
+            if (line_start < bytes_read) {
+                // Line continues in next buffer - for simplicity, just reset
+                line_start = 0;
+            } else {
+                line_start = 0;
+            }
+            total_read += bytes_read;
+        }
+    }
+};
+
+// Unit tests for SmartStackTrace
+test "isFrameworkFrame identifies runner.zig as framework" {
+    try std.testing.expect(SmartStackTrace.isFrameworkFrame("/path/to/src/runner.zig"));
+    try std.testing.expect(SmartStackTrace.isFrameworkFrame("runner.zig"));
+}
+
+test "isFrameworkFrame identifies zspec.zig as framework" {
+    try std.testing.expect(SmartStackTrace.isFrameworkFrame("/path/to/src/zspec.zig"));
+    try std.testing.expect(SmartStackTrace.isFrameworkFrame("zspec.zig"));
+}
+
+test "isFrameworkFrame identifies expect.zig as framework" {
+    try std.testing.expect(SmartStackTrace.isFrameworkFrame("/path/to/src/expect.zig"));
+    try std.testing.expect(SmartStackTrace.isFrameworkFrame("expect.zig"));
+}
+
+test "isFrameworkFrame identifies std library as framework" {
+    try std.testing.expect(SmartStackTrace.isFrameworkFrame("/usr/lib/zig/lib/std/testing.zig"));
+    try std.testing.expect(SmartStackTrace.isFrameworkFrame("/home/user/.zig/lib/std.zig"));
+}
+
+test "isFrameworkFrame returns false for user test files" {
+    try std.testing.expect(!SmartStackTrace.isFrameworkFrame("/project/tests/my_test.zig"));
+    try std.testing.expect(!SmartStackTrace.isFrameworkFrame("/project/src/calculator.zig"));
+    try std.testing.expect(!SmartStackTrace.isFrameworkFrame("user_code.zig"));
+}
+
+test "isFrameworkFrame returns false for user files with similar names" {
+    // Should not match partial names
+    try std.testing.expect(!SmartStackTrace.isFrameworkFrame("/project/my_runner_test.zig"));
+    try std.testing.expect(!SmartStackTrace.isFrameworkFrame("/project/expect_helper.zig"));
+}

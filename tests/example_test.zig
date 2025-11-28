@@ -187,6 +187,23 @@ pub const STRING_UTILS = struct {
     };
 };
 
+// Example: Skipping tests with skip_ prefix
+pub const SKIP_EXAMPLE = struct {
+    test "skip_this test is work in progress" {
+        // This test will be skipped and not run
+        try expect.toBeTrue(false); // Would fail if run
+    }
+
+    test "skip_another skipped test" {
+        // This test will also be skipped
+        unreachable;
+    }
+
+    test "this test runs normally" {
+        try expect.toBeTrue(true);
+    }
+};
+
 // Testing the expect matchers
 pub const MATCHERS = struct {
     test "equal works" {

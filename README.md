@@ -12,6 +12,8 @@ RSpec-like testing framework for Zig.
 - **beforeAll/afterAll** - Run setup/teardown once per scope
 - **let** - Memoized lazy values (computed once per test)
 - **expect** - Custom matchers for readable assertions
+- **Fluent matchers** - RSpec/Jest-style `expect(x).to().equal(y)` syntax
+- **Factory** - FactoryBot-like test data generation
 - **Scoped hooks** - Hooks only apply to tests within their struct
 
 ## Installation
@@ -21,7 +23,7 @@ Add zspec as a dependency in your `build.zig.zon`:
 ```zig
 .dependencies = .{
     .zspec = .{
-        .url = "https://github.com/yourusername/zspec/archive/refs/heads/main.tar.gz",
+        .url = "https://github.com/apotema/zspec/archive/refs/heads/main.tar.gz",
         .hash = "...",
     },
 },
@@ -151,6 +153,108 @@ try expect.toContain("hello world", "world");
 try expect.toHaveLength(slice, 3);
 try expect.toBeEmpty(slice);
 try expect.notToBeEmpty(slice);
+```
+
+## Fluent Matchers
+
+ZSpec also provides RSpec/Jest-style fluent matchers with `to()` and `notTo()` syntax:
+
+```zig
+const expectFluent = zspec.expectFluent;
+
+// Equality
+try expectFluent(@as(i32, 42)).to().equal(42);
+try expectFluent(@as([]const u8, "hello")).to().eql("hello");  // deep equality
+try expectFluent(@as(i32, 1)).notTo().equal(2);
+
+// Booleans
+try expectFluent(true).to().beTrue();
+try expectFluent(false).to().beFalse();
+
+// Null checks
+try expectFluent(optional).to().beNull();
+try expectFluent(optional).notTo().beNull();
+
+// Comparisons
+try expectFluent(@as(i32, 10)).to().beGreaterThan(5);
+try expectFluent(@as(i32, 5)).to().beLessThan(10);
+try expectFluent(@as(i32, 5)).to().beGreaterThanOrEqual(5);
+try expectFluent(@as(i32, 5)).to().beLessThanOrEqual(10);
+try expectFluent(@as(i32, 5)).to().beBetween(1, 10);
+
+// Strings/Slices
+try expectFluent(@as([]const u8, "hello world")).to().contain("world");
+try expectFluent(@as([]const u8, "hello")).to().startWith("hel");
+try expectFluent(@as([]const u8, "hello")).to().endWith("llo");
+try expectFluent(@as([]const u8, "hello")).to().haveLength(5);
+try expectFluent(@as([]const u8, "")).to().beEmpty();
+```
+
+## Factory (Test Data Generation)
+
+ZSpec includes a FactoryBot-like module for generating test data:
+
+```zig
+const Factory = zspec.Factory;
+
+const User = struct {
+    id: u32,
+    name: []const u8,
+    email: []const u8,
+    active: bool,
+};
+
+// Define a factory with default values
+const UserFactory = Factory.define(User, .{
+    .id = Factory.sequence(u32),                    // Auto-incrementing
+    .name = "John Doe",
+    .email = Factory.sequenceFmt("user{d}@example.com"),  // "user1@...", "user2@..."
+    .active = true,
+});
+
+// Create trait variants
+const AdminFactory = UserFactory.trait(.{ .role = "admin" });
+
+pub const UserTests = struct {
+    test "tests:before" {
+        Factory.resetSequences();  // Reset sequences before each test
+    }
+
+    test "creates user with defaults" {
+        const user = UserFactory.build(.{});
+        try expect.equal(user.id, 1);
+        try expect.toBeTrue(std.mem.eql(u8, user.email, "user1@example.com"));
+    }
+
+    test "creates user with overrides" {
+        const user = UserFactory.build(.{ .name = "Jane Doe" });
+        try expect.toBeTrue(std.mem.eql(u8, user.name, "Jane Doe"));
+    }
+
+    test "creates pointer with buildPtr" {
+        const user_ptr = UserFactory.buildPtr(.{});
+        defer std.testing.allocator.destroy(user_ptr);
+    }
+};
+```
+
+### Factory Features
+
+- `Factory.sequence(T)` - Auto-incrementing numeric values
+- `Factory.sequenceFmt(fmt)` - Formatted sequence strings
+- `Factory.lazy(fn)` / `Factory.lazyAlloc(fn)` - Computed values
+- `Factory.assoc(OtherFactory)` - Nested factory associations
+- `.trait(overrides)` - Create factory variants with different defaults
+- `.build(.{})` / `.buildPtr(.{})` - Create instances
+- `.buildWith(alloc, .{})` / `.buildPtrWith(alloc, .{})` - Create with custom allocator
+- `Factory.resetSequences()` - Reset all sequence counters
+
+**Note:** When using `sequenceFmt`, use an arena allocator to avoid memory leak reports:
+
+```zig
+var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+defer arena.deinit();
+const user = UserFactory.buildWith(arena.allocator(), .{});
 ```
 
 ## Optional Integrations

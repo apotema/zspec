@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <!DOCTYPE coverage SYSTEM 'http://cobertura.sourceforge.net/xml/coverage-04.dtd'>
-<coverage line-rate="0.862" lines-covered="301" lines-valid="349" branch-rate="1.0" branches-covered="1.0" branches-rate="1.0" complexity="1.0" version="1.9" timestamp="1766512519">
+<coverage line-rate="0.862" lines-covered="301" lines-valid="349" branch-rate="1.0" branches-covered="1.0" branches-rate="1.0" complexity="1.0" version="1.9" timestamp="1766521178">
 	<sources>
 		<source>/home/runner/work/zspec/zspec/src/</source>
 	</sources>
@@ -213,95 +213,95 @@
 						<line number="283" hits="14"/>
 						<line number="284" hits="8"/>
 						<line number="285" hits="28"/>
-						<line number="320" hits="4"/>
-						<line number="339" hits="2"/>
-						<line number="340" hits="2"/>
-						<line number="341" hits="2"/>
-						<line number="342" hits="4"/>
-						<line number="346" hits="1"/>
-						<line number="347" hits="1"/>
-						<line number="348" hits="1"/>
-						<line number="349" hits="4"/>
+						<line number="326" hits="4"/>
+						<line number="345" hits="2"/>
+						<line number="346" hits="2"/>
+						<line number="347" hits="2"/>
+						<line number="348" hits="4"/>
+						<line number="352" hits="1"/>
 						<line number="353" hits="1"/>
-						<line number="354" hits="2"/>
-						<line number="369" hits="1"/>
-						<line number="370" hits="2"/>
-						<line number="374" hits="2"/>
-						<line number="375" hits="2"/>
-						<line number="385" hits="14"/>
-						<line number="413" hits="1"/>
-						<line number="414" hits="3"/>
-						<line number="423" hits="1"/>
-						<line number="424" hits="3"/>
-						<line number="434" hits="1"/>
+						<line number="354" hits="1"/>
+						<line number="355" hits="4"/>
+						<line number="359" hits="1"/>
+						<line number="360" hits="2"/>
+						<line number="375" hits="1"/>
+						<line number="376" hits="2"/>
+						<line number="380" hits="2"/>
+						<line number="381" hits="2"/>
+						<line number="397" hits="14"/>
+						<line number="425" hits="1"/>
+						<line number="426" hits="3"/>
 						<line number="435" hits="1"/>
-						<line number="439" hits="3"/>
-						<line number="440" hits="3"/>
-						<line number="441" hits="3"/>
-						<line number="443" hits="3"/>
-						<line number="458" hits="1"/>
-						<line number="459" hits="1"/>
-						<line number="460" hits="2"/>
-						<line number="464" hits="2"/>
-						<line number="465" hits="2"/>
-						<line number="466" hits="4"/>
-						<line number="554" hits="1"/>
-						<line number="555" hits="1"/>
-						<line number="565" hits="4"/>
-						<line number="632" hits="1"/>
-						<line number="645" hits="1"/>
-						<line number="646" hits="2"/>
-						<line number="647" hits="2"/>
-						<line number="648" hits="3"/>
-						<line number="651" hits="1"/>
-						<line number="662" hits="1"/>
-						<line number="663" hits="2"/>
-						<line number="664" hits="3"/>
-						<line number="667" hits="1"/>
-						<line number="668" hits="1"/>
-						<line number="680" hits="1"/>
-						<line number="681" hits="1"/>
-						<line number="682" hits="1"/>
-						<line number="684" hits="2"/>
-						<line number="685" hits="2"/>
-						<line number="686" hits="3"/>
-						<line number="689" hits="1"/>
-						<line number="690" hits="1"/>
-						<line number="701" hits="1"/>
-						<line number="702" hits="3"/>
-						<line number="704" hits="2"/>
-						<line number="705" hits="2"/>
-						<line number="707" hits="2"/>
+						<line number="436" hits="3"/>
+						<line number="446" hits="1"/>
+						<line number="447" hits="1"/>
+						<line number="451" hits="3"/>
+						<line number="452" hits="3"/>
+						<line number="453" hits="3"/>
+						<line number="455" hits="3"/>
+						<line number="470" hits="1"/>
+						<line number="471" hits="1"/>
+						<line number="472" hits="2"/>
+						<line number="476" hits="2"/>
+						<line number="477" hits="2"/>
+						<line number="478" hits="4"/>
+						<line number="572" hits="1"/>
+						<line number="573" hits="1"/>
+						<line number="589" hits="4"/>
+						<line number="656" hits="1"/>
+						<line number="669" hits="1"/>
+						<line number="670" hits="2"/>
+						<line number="671" hits="2"/>
+						<line number="672" hits="3"/>
+						<line number="675" hits="1"/>
+						<line number="686" hits="1"/>
+						<line number="687" hits="2"/>
+						<line number="688" hits="3"/>
+						<line number="691" hits="1"/>
+						<line number="692" hits="1"/>
+						<line number="704" hits="1"/>
+						<line number="705" hits="1"/>
+						<line number="706" hits="1"/>
 						<line number="708" hits="2"/>
-						<line number="711" hits="1"/>
-						<line number="728" hits="1"/>
-						<line number="729" hits="1"/>
+						<line number="709" hits="2"/>
+						<line number="710" hits="3"/>
+						<line number="713" hits="1"/>
+						<line number="714" hits="1"/>
+						<line number="725" hits="1"/>
+						<line number="726" hits="3"/>
+						<line number="728" hits="2"/>
+						<line number="729" hits="2"/>
 						<line number="731" hits="2"/>
 						<line number="732" hits="2"/>
-						<line number="733" hits="3"/>
-						<line number="736" hits="1"/>
-						<line number="745" hits="1"/>
-						<line number="746" hits="2"/>
-						<line number="748" hits="2"/>
-						<line number="751" hits="1"/>
-						<line number="766" hits="1"/>
-						<line number="767" hits="2"/>
-						<line number="768" hits="3"/>
-						<line number="771" hits="1"/>
-						<line number="772" hits="1"/>
-						<line number="779" hits="1"/>
-						<line number="780" hits="2"/>
+						<line number="735" hits="1"/>
+						<line number="752" hits="1"/>
+						<line number="753" hits="1"/>
+						<line number="755" hits="2"/>
+						<line number="756" hits="2"/>
+						<line number="757" hits="3"/>
+						<line number="760" hits="1"/>
+						<line number="769" hits="1"/>
+						<line number="770" hits="2"/>
+						<line number="772" hits="2"/>
+						<line number="775" hits="1"/>
 						<line number="790" hits="1"/>
-						<line number="791" hits="3"/>
-						<line number="794" hits="1"/>
+						<line number="791" hits="2"/>
+						<line number="792" hits="3"/>
 						<line number="795" hits="1"/>
-						<line number="805" hits="1"/>
-						<line number="806" hits="1"/>
-						<line number="807" hits="1"/>
-						<line number="808" hits="2"/>
-						<line number="810" hits="1"/>
-						<line number="812" hits="1"/>
-						<line number="813" hits="3"/>
+						<line number="796" hits="1"/>
+						<line number="803" hits="1"/>
+						<line number="804" hits="2"/>
+						<line number="814" hits="1"/>
+						<line number="815" hits="3"/>
+						<line number="818" hits="1"/>
+						<line number="819" hits="1"/>
+						<line number="829" hits="1"/>
+						<line number="830" hits="1"/>
+						<line number="831" hits="1"/>
+						<line number="832" hits="2"/>
+						<line number="834" hits="1"/>
+						<line number="836" hits="1"/>
+						<line number="837" hits="3"/>
 					</lines>
 				</class>
 				<class name="zspec_zig__2" filename="zspec.zig" branch-rate="1.0" complexity="1.0" line-rate="0.917">

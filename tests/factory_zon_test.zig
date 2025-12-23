@@ -272,3 +272,155 @@ pub const DEFINE_FROM_NESTED_STRUCT = struct {
         try expect.equal(sprite.tint.a, 64);
     }
 };
+
+// Types for deeply nested struct tests (issue #35)
+const Inner = struct {
+    value: u8,
+    name: []const u8,
+};
+
+const Middle = struct {
+    inner: Inner,
+    count: u32,
+};
+
+const Outer = struct {
+    middle: Middle,
+    label: []const u8,
+};
+
+// Deeply nested .zon data
+const deeply_nested_zon = .{
+    .middle = .{
+        .inner = .{ .value = 42, .name = "nested" },
+        .count = 100,
+    },
+    .label = "outer",
+};
+
+const OuterFactory = Factory.defineFrom(Outer, deeply_nested_zon);
+
+pub const DEFINE_FROM_DEEPLY_NESTED = struct {
+    test "defineFrom with deeply nested structs coerces all levels" {
+        const outer = OuterFactory.build(.{});
+
+        try std.testing.expectEqualStrings("outer", outer.label);
+        try expect.equal(outer.middle.count, 100);
+        try expect.equal(outer.middle.inner.value, 42);
+        try std.testing.expectEqualStrings("nested", outer.middle.inner.name);
+    }
+
+    test "deeply nested struct override at middle level" {
+        const outer = OuterFactory.build(.{
+            .middle = .{
+                .inner = .{ .value = 99, .name = "overridden" },
+                .count = 200,
+            },
+        });
+
+        try expect.equal(outer.middle.count, 200);
+        try expect.equal(outer.middle.inner.value, 99);
+        try std.testing.expectEqualStrings("overridden", outer.middle.inner.name);
+    }
+
+    test "deeply nested struct with trait" {
+        const CustomOuterFactory = OuterFactory.trait(.{
+            .middle = .{
+                .inner = .{ .value = 77, .name = "from trait" },
+                .count = 50,
+            },
+        });
+
+        const outer = CustomOuterFactory.build(.{});
+
+        try expect.equal(outer.middle.inner.value, 77);
+        try std.testing.expectEqualStrings("from trait", outer.middle.inner.name);
+        try expect.equal(outer.middle.count, 50);
+    }
+};
+
+// Types for union with nested struct validation (issue #36)
+const Position = struct {
+    x: f32,
+    y: f32,
+};
+
+const CircleData = struct {
+    center: Position,
+    radius: f32,
+};
+
+const RectData = struct {
+    origin: Position,
+    width: f32,
+    height: f32,
+};
+
+const ComplexShape = union(enum) {
+    circle: CircleData,
+    rect: RectData,
+};
+
+const Canvas = struct {
+    shape: ComplexShape,
+    name: []const u8,
+};
+
+const canvas_circle_zon = .{
+    .shape = .{ .circle = .{ .center = .{ .x = 10.0, .y = 20.0 }, .radius = 5.0 } },
+    .name = "my circle",
+};
+
+const canvas_rect_zon = .{
+    .shape = .{ .rect = .{ .origin = .{ .x = 0.0, .y = 0.0 }, .width = 100.0, .height = 50.0 } },
+    .name = "my rect",
+};
+
+const CircleCanvasFactory = Factory.defineFrom(Canvas, canvas_circle_zon);
+const RectCanvasFactory = Factory.defineFrom(Canvas, canvas_rect_zon);
+
+pub const DEFINE_FROM_UNION_WITH_NESTED = struct {
+    test "union with deeply nested struct (circle)" {
+        const canvas = CircleCanvasFactory.build(.{});
+
+        try std.testing.expectEqualStrings("my circle", canvas.name);
+        switch (canvas.shape) {
+            .circle => |c| {
+                try expect.equal(c.center.x, 10.0);
+                try expect.equal(c.center.y, 20.0);
+                try expect.equal(c.radius, 5.0);
+            },
+            .rect => return error.UnexpectedShape,
+        }
+    }
+
+    test "union with deeply nested struct (rect)" {
+        const canvas = RectCanvasFactory.build(.{});
+
+        try std.testing.expectEqualStrings("my rect", canvas.name);
+        switch (canvas.shape) {
+            .rect => |r| {
+                try expect.equal(r.origin.x, 0.0);
+                try expect.equal(r.origin.y, 0.0);
+                try expect.equal(r.width, 100.0);
+                try expect.equal(r.height, 50.0);
+            },
+            .circle => return error.UnexpectedShape,
+        }
+    }
+
+    test "override union with deeply nested anonymous struct" {
+        const canvas = CircleCanvasFactory.build(.{
+            .shape = .{ .rect = .{ .origin = .{ .x = 5.0, .y = 5.0 }, .width = 200.0, .height = 100.0 } },
+        });
+
+        switch (canvas.shape) {
+            .rect => |r| {
+                try expect.equal(r.origin.x, 5.0);
+                try expect.equal(r.origin.y, 5.0);
+                try expect.equal(r.width, 200.0);
+            },
+            .circle => return error.UnexpectedShape,
+        }
+    }
+};

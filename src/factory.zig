@@ -316,6 +316,12 @@ fn FactoryImpl(comptime T: type, comptime defaults: anytype, comptime depth: usi
                 }
             }
 
+            // Handle anonymous struct to named struct coercion
+            // e.g., .build(.{ .tint = .{ .r = 255, ... } }) -> Color{ .r = 255, ... }
+            if (@typeInfo(FieldType) == .@"struct" and @typeInfo(OverrideType) == .@"struct") {
+                return buildTypedPayload(FieldType, override_value);
+            }
+
             // Coerce compatible types
             return @as(FieldType, override_value);
         }
@@ -501,6 +507,12 @@ fn TraitFactoryImpl(comptime T: type, comptime base_defaults: anytype, comptime 
                     ptr.* = buildNestedStruct(ChildType, override_value);
                     return ptr;
                 }
+            }
+
+            // Handle anonymous struct to named struct coercion
+            // e.g., .build(.{ .tint = .{ .r = 255, ... } }) -> Color{ .r = 255, ... }
+            if (@typeInfo(FieldType) == .@"struct" and @typeInfo(OverrideType) == .@"struct") {
+                return buildTypedPayload(FieldType, override_value);
             }
 
             // Coerce compatible types

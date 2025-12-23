@@ -243,4 +243,32 @@ pub const DEFINE_FROM_NESTED_STRUCT = struct {
         try expect.equal(sprite.tint.g, 0);
         try expect.equal(sprite.tint.b, 0);
     }
+
+    test "callsite override with anonymous nested struct" {
+        // Override using anonymous struct syntax at build() callsite
+        const sprite = SpriteVisualFactory.build(.{
+            .tint = .{ .r = 0, .g = 255, .b = 0, .a = 128 },
+        });
+
+        try expect.equal(sprite.tint.r, 0);
+        try expect.equal(sprite.tint.g, 255);
+        try expect.equal(sprite.tint.b, 0);
+        try expect.equal(sprite.tint.a, 128);
+    }
+
+    test "callsite override with anonymous nested struct on trait factory" {
+        const RedTintFactory = SpriteVisualFactory.trait(.{
+            .tint = .{ .r = 255, .g = 0, .b = 0, .a = 255 },
+        });
+
+        // Override the trait's tint with anonymous struct at callsite
+        const sprite = RedTintFactory.build(.{
+            .tint = .{ .r = 0, .g = 0, .b = 255, .a = 64 },
+        });
+
+        try expect.equal(sprite.tint.r, 0);
+        try expect.equal(sprite.tint.g, 0);
+        try expect.equal(sprite.tint.b, 255);
+        try expect.equal(sprite.tint.a, 64);
+    }
 };

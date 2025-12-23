@@ -97,6 +97,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "examples-nested", .path = "examples/nested_contexts_test.zig" },
         .{ .name = "examples-matchers", .path = "examples/matchers_test.zig" },
         .{ .name = "examples-factory", .path = "examples/factory_test.zig" },
+        .{ .name = "examples-factory-zon", .path = "examples/factory_zon_test.zig" },
         .{ .name = "examples-ecs", .path = "examples/ecs_integration_test.zig" },
         .{ .name = "examples-fsm", .path = "examples/fsm_integration_test.zig" },
     };

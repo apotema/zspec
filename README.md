@@ -257,6 +257,47 @@ defer arena.deinit();
 const user = UserFactory.buildWith(arena.allocator(), .{});
 ```
 
+### Loading Factory Definitions from .zon Files
+
+For better separation of concerns, you can load factory definitions from `.zon` files using `Factory.defineFrom()`:
+
+```zig
+// factories.zon
+.{
+    .user = .{
+        .id = 0,
+        .name = "John Doe",
+        .email = "john@example.com",
+        .active = true,
+    },
+    .admin = .{
+        .id = 0,
+        .name = "Admin User",
+        .email = "admin@example.com",
+        .active = true,
+    },
+}
+```
+
+```zig
+// In your test file
+const factory_defs = @import("factories.zon");
+const UserFactory = Factory.defineFrom(User, factory_defs.user);
+const AdminFactory = Factory.defineFrom(User, factory_defs.admin);
+
+// Use like any other factory
+const user = UserFactory.build(.{});
+const custom = UserFactory.build(.{ .name = "Jane" });
+```
+
+Benefits:
+- **Typo detection**: `defineFrom()` validates field names at compile time
+- **Separation of concerns**: Test data lives in data files, test logic in test files
+- **Reusability**: Share factory definitions across multiple test files
+- **Type safety**: Full compile-time type checking via Zig's comptime system
+
+**Note:** `.zon` files contain static comptime data only. For dynamic features like sequences or lazy values, use `define()` directly or apply them via traits.
+
 ## Optional Integrations
 
 ### ECS Integration (zig-ecs)

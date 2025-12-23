@@ -7,6 +7,7 @@
 //! - **Reusability**: Share factory definitions across multiple test files
 //! - **Maintainability**: Update test data without touching test code
 //! - **Type safety**: Full compile-time type checking via Zig's comptime system
+//! - **Typo detection**: defineFrom() validates field names at compile time
 //!
 //! Usage:
 //!   zig build examples-factory-zon
@@ -41,12 +42,6 @@ const Product = struct {
     quantity: u32,
 };
 
-const Color = struct {
-    r: u8,
-    g: u8,
-    b: u8,
-};
-
 const Shape = union(enum) {
     circle: struct { radius: f32 },
     rectangle: struct { width: f32, height: f32 },
@@ -54,7 +49,7 @@ const Shape = union(enum) {
 
 const ShapeVisual = struct {
     shape: Shape,
-    color: Color,
+    z_index: u8,
     visible: bool,
 };
 
@@ -65,14 +60,15 @@ const ShapeVisual = struct {
 // Import the .zon file at compile time - no runtime parsing needed!
 const factory_defs = @import("factory_zon_example.zon");
 
-// Define factories using defineFrom() - makes intent clear
+// Define factories using defineFrom() - validates field names and makes intent clear
 const UserFactory = Factory.defineFrom(User, factory_defs.user);
 const AdminFactory = Factory.defineFrom(User, factory_defs.admin);
 const ProductFactory = Factory.defineFrom(Product, factory_defs.product);
 const OutOfStockProductFactory = Factory.defineFrom(Product, factory_defs.out_of_stock_product);
 
-// Note: Nested struct coercion (like Color) requires explicit type in .zon
-// For simpler cases, unions work directly with anonymous syntax
+// Union types work seamlessly with .zon anonymous syntax
+const CircleFactory = Factory.defineFrom(ShapeVisual, factory_defs.circle);
+const RectangleFactory = Factory.defineFrom(ShapeVisual, factory_defs.rectangle);
 
 // =============================================================================
 // Example Tests
@@ -128,6 +124,50 @@ pub const PRODUCT_VARIANTS = struct {
         try std.testing.expectEqualStrings("Rare Item", product.name);
         try expect.toBeTrue(!product.in_stock);
         try expect.equal(product.quantity, 0);
+    }
+};
+
+pub const UNION_TYPES = struct {
+    test "circle shape from .zon" {
+        const visual = CircleFactory.build(.{});
+
+        try expect.toBeTrue(visual.visible);
+        try expect.equal(visual.z_index, 10);
+
+        switch (visual.shape) {
+            .circle => |c| try expect.equal(c.radius, 25.0),
+            .rectangle => return error.UnexpectedShape,
+        }
+    }
+
+    test "rectangle shape from .zon" {
+        const visual = RectangleFactory.build(.{});
+
+        try expect.toBeTrue(visual.visible);
+        try expect.equal(visual.z_index, 5);
+
+        switch (visual.shape) {
+            .rectangle => |r| {
+                try expect.equal(r.width, 100.0);
+                try expect.equal(r.height, 50.0);
+            },
+            .circle => return error.UnexpectedShape,
+        }
+    }
+
+    test "override union shape at build time" {
+        // Start with circle, override to rectangle
+        const visual = CircleFactory.build(.{
+            .shape = .{ .rectangle = .{ .width = 200.0, .height = 100.0 } },
+        });
+
+        switch (visual.shape) {
+            .rectangle => |r| {
+                try expect.equal(r.width, 200.0);
+                try expect.equal(r.height, 100.0);
+            },
+            .circle => return error.UnexpectedShape,
+        }
     }
 };
 

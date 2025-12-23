@@ -37,16 +37,16 @@
         .quantity = 0,
     },
 
-    // Shape variants for game entities
+    // Shape variants for game entities (unions work with anonymous syntax)
     .circle = .{
         .shape = .{ .circle = .{ .radius = 25.0 } },
-        .color = .{ .r = 255, .g = 0, .b = 0 },
+        .z_index = 10,
         .visible = true,
     },
 
     .rectangle = .{
         .shape = .{ .rectangle = .{ .width = 100.0, .height = 50.0 } },
-        .color = .{ .r = 0, .g = 255, .b = 0 },
+        .z_index = 5,
         .visible = true,
     },
 }

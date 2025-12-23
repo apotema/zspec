@@ -101,8 +101,11 @@ pub fn define(comptime T: type, comptime defaults: anytype) type {
 
 /// Define a factory from comptime data (e.g., imported from a .zon file)
 ///
-/// This is a convenience wrapper around `define()` that makes the intent clear
-/// when loading factory definitions from external .zon files.
+/// This is a convenience wrapper around `define()` that validates unknown fields
+/// and makes the intent clear when loading factory definitions from external .zon files.
+///
+/// Unlike `define()`, this function will produce a compile error if the .zon data
+/// contains fields that don't exist in the target type T, catching typos early.
 ///
 /// Example usage:
 /// ```zig
@@ -118,8 +121,28 @@ pub fn define(comptime T: type, comptime defaults: anytype) type {
 ///     .product = .{ .name = "Widget", .price = 9.99, .in_stock = true },
 /// }
 /// ```
+///
+/// Note: .zon files contain static comptime data only. For dynamic features like
+/// sequences or lazy values, use `define()` directly or apply them via traits.
 pub fn defineFrom(comptime T: type, comptime zon_data: anytype) type {
+    // Validate that all fields in zon_data exist in T (catches typos in .zon files)
+    validateZonFields(T, zon_data);
     return define(T, zon_data);
+}
+
+/// Validate that all fields in zon_data exist in the target type T.
+/// This catches typos in .zon files at compile time.
+fn validateZonFields(comptime T: type, comptime zon_data: anytype) void {
+    const ZonType = @TypeOf(zon_data);
+    const zon_fields = std.meta.fields(ZonType);
+
+    inline for (zon_fields) |zon_field| {
+        if (!@hasField(T, zon_field.name)) {
+            @compileError("Unknown field '" ++ zon_field.name ++ "' in .zon data. " ++
+                "Type '" ++ @typeName(T) ++ "' has no such field. " ++
+                "Check for typos in your .zon file.");
+        }
+    }
 }
 
 /// Coerce an anonymous struct to a union type

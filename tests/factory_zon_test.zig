@@ -188,3 +188,87 @@ pub const DEFINE_FROM_EQUIVALENCE = struct {
         try expect.equal(from_inline.active, from_zon.active);
     }
 };
+
+// Types for nested struct tests (issue #33)
+const Color = struct {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+};
+
+const SpriteVisual = struct {
+    tint: Color,
+    scale: f32,
+};
+
+// Simulates data from a .zon file (anonymous struct)
+const sprite_zon_data = .{
+    .tint = .{ .r = 255, .g = 128, .b = 64, .a = 255 },
+    .scale = 1.5,
+};
+
+const SpriteVisualFactory = Factory.defineFrom(SpriteVisual, sprite_zon_data);
+
+pub const DEFINE_FROM_NESTED_STRUCT = struct {
+    test "defineFrom with nested struct coerces anonymous struct to named struct" {
+        const sprite = SpriteVisualFactory.build(.{});
+
+        try expect.equal(sprite.tint.r, 255);
+        try expect.equal(sprite.tint.g, 128);
+        try expect.equal(sprite.tint.b, 64);
+        try expect.equal(sprite.tint.a, 255);
+        try expect.equal(sprite.scale, 1.5);
+    }
+
+    test "defineFrom with nested struct allows overrides" {
+        // Override the nested struct with a properly typed Color
+        const sprite = SpriteVisualFactory.build(.{
+            .tint = Color{ .r = 0, .g = 0, .b = 0, .a = 128 },
+        });
+
+        try expect.equal(sprite.tint.r, 0);
+        try expect.equal(sprite.tint.a, 128);
+    }
+
+    test "trait with nested struct from defineFrom" {
+        // Create a trait with a different tint (using anonymous struct)
+        const RedTintFactory = SpriteVisualFactory.trait(.{
+            .tint = .{ .r = 255, .g = 0, .b = 0, .a = 255 },
+        });
+
+        const sprite = RedTintFactory.build(.{});
+
+        try expect.equal(sprite.tint.r, 255);
+        try expect.equal(sprite.tint.g, 0);
+        try expect.equal(sprite.tint.b, 0);
+    }
+
+    test "callsite override with anonymous nested struct" {
+        // Override using anonymous struct syntax at build() callsite
+        const sprite = SpriteVisualFactory.build(.{
+            .tint = .{ .r = 0, .g = 255, .b = 0, .a = 128 },
+        });
+
+        try expect.equal(sprite.tint.r, 0);
+        try expect.equal(sprite.tint.g, 255);
+        try expect.equal(sprite.tint.b, 0);
+        try expect.equal(sprite.tint.a, 128);
+    }
+
+    test "callsite override with anonymous nested struct on trait factory" {
+        const RedTintFactory = SpriteVisualFactory.trait(.{
+            .tint = .{ .r = 255, .g = 0, .b = 0, .a = 255 },
+        });
+
+        // Override the trait's tint with anonymous struct at callsite
+        const sprite = RedTintFactory.build(.{
+            .tint = .{ .r = 0, .g = 0, .b = 255, .a = 64 },
+        });
+
+        try expect.equal(sprite.tint.r, 0);
+        try expect.equal(sprite.tint.g, 0);
+        try expect.equal(sprite.tint.b, 255);
+        try expect.equal(sprite.tint.a, 64);
+    }
+};

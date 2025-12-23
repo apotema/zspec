@@ -15,6 +15,9 @@ RSpec-like testing framework for Zig.
 - **Fluent matchers** - RSpec/Jest-style `expect(x).to().equal(y)` syntax
 - **Factory** - FactoryBot-like test data generation
 - **Scoped hooks** - Hooks only apply to tests within their struct
+- **Skip tests** - Skip tests with `skip_` prefix
+- **Memory leak detection** - Automatic leak detection with configurable behavior
+- **Smart stack traces** - Filtered traces showing source context
 
 ## Installation
 
@@ -113,6 +116,22 @@ pub const StringUtils = struct {
 | `after` | `tests:after` | After each test in scope |
 
 Parent hooks also apply to nested scopes.
+
+## Skipping Tests
+
+Skip tests by prefixing the test name with `skip_`:
+
+```zig
+test "skip_not implemented yet" {
+    // This test will be skipped and reported as such
+}
+
+test "skip_waiting for dependency" {
+    // Also skipped
+}
+```
+
+Skipped tests are counted separately and shown in the test summary.
 
 ## Let (Memoized Values)
 
@@ -344,6 +363,25 @@ test "state transitions" {
 
 **[📖 Full FSM Integration Guide](https://github.com/apotema/zspec/wiki/FSM-Integration)** | [Examples](examples/fsm_integration_test.zig) | [Usage Project](usage/fsm/)
 
+## Memory Leak Detection
+
+ZSpec automatically detects memory leaks using Zig's `std.testing.allocator`. By default, tests that leak memory will fail.
+
+```zig
+test "detects leaks" {
+    const ptr = std.testing.allocator.create(u32) catch unreachable;
+    // Forgetting to free will cause test to fail with "Memory Leak Detected"
+    // std.testing.allocator.destroy(ptr);
+}
+```
+
+Control leak detection behavior with environment variables:
+
+```bash
+TEST_DETECT_LEAKS=false zig build test  # Disable leak detection
+TEST_FAIL_ON_LEAK=false zig build test  # Report leaks but don't fail
+```
+
 ## Running Tests
 
 ```bash
@@ -394,10 +432,16 @@ Debug configurations are available for LLDB debugger:
 
 ## Environment Variables
 
-- `TEST_VERBOSE=true` - Show each test result (default: true)
-- `TEST_FAIL_FIRST=true` - Stop on first failure
-- `TEST_FILTER=pattern` - Only run tests matching pattern
-- `TEST_JUNIT_PATH=path` - Generate JUnit XML report at specified path
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TEST_VERBOSE` | `true` | Show each test result |
+| `TEST_FAIL_FIRST` | `false` | Stop on first failure |
+| `TEST_FILTER` | - | Only run tests matching pattern |
+| `TEST_JUNIT_PATH` | - | Generate JUnit XML report at specified path |
+| `TEST_DETECT_LEAKS` | `true` | Enable memory leak detection |
+| `TEST_FAIL_ON_LEAK` | `true` | Fail tests that leak memory |
+| `TEST_FAILED_ONLY` | `false` | Only show failed test results |
+| `TEST_OUTPUT_FILE` | - | Write test output to file (without ANSI codes) |
 
 ## CI Integration
 

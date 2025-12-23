@@ -16,6 +16,10 @@ zig build examples  # Run all example files (examples/*.zig)
 - `TEST_FAIL_FIRST=true` - Stop on first failure
 - `TEST_FILTER=pattern` - Only run tests matching pattern
 - `TEST_JUNIT_PATH=path` - Generate JUnit XML report at specified path (for CI integration)
+- `TEST_DETECT_LEAKS=true` - Enable memory leak detection (default: true)
+- `TEST_FAIL_ON_LEAK=true` - Fail tests on memory leaks (default: true)
+- `TEST_FAILED_ONLY=true` - Only show failed test results
+- `TEST_OUTPUT_FILE=path` - Write test output to file (without ANSI codes)
 
 ## Architecture
 
@@ -29,6 +33,7 @@ ZSpec is an RSpec-like testing framework for Zig with these main components:
 
 **src/factory.zig** - FactoryBot-like test data generation:
 - `Factory.define(T, defaults)` - Define a factory with default values
+- `Factory.defineFrom(T, zon_struct)` - Define factory from .zon file data (compile-time validated)
 - `Factory.sequence(T)` - Auto-incrementing numeric sequences
 - `Factory.sequenceFmt(fmt)` - Formatted sequence strings (e.g., "user{d}@example.com")
 - `Factory.lazy(fn)` / `Factory.lazyAlloc(fn)` - Computed values
@@ -36,6 +41,11 @@ ZSpec is an RSpec-like testing framework for Zig with these main components:
 - `.trait(overrides)` - Create factory variants with different defaults
 - `.build(.{})` / `.buildPtr(.{})` - Create instances (uses std.testing.allocator)
 - `.buildWith(alloc, .{})` / `.buildPtrWith(alloc, .{})` - Create with custom allocator
+
+**src/matchers.zig** - Fluent assertion matchers:
+- `expectFluent(value).to().equal(expected)` - RSpec/Jest-style assertions
+- Supports: `beTrue()`, `beFalse()`, `beNull()`, `beGreaterThan()`, `beLessThan()`, `contain()`, `startWith()`, `endWith()`, `haveLength()`, `beEmpty()`, `beBetween()`
+- Use `notTo()` for negated assertions
 
 **src/integrations/ecs.zig** - Optional ECS integration module for zig-ecs (https://github.com/prime31/zig-ecs):
 - Exposed as separate "zspec-ecs" module that users opt into
@@ -62,8 +72,10 @@ ZSpec is an RSpec-like testing framework for Zig with these main components:
 **src/runner.zig** - Custom test runner that processes hooks and provides output:
 - Hooks are identified by test name suffixes: `tests:beforeAll`, `tests:afterAll`, `tests:before`, `tests:after`
 - Scoped hooks: hooks only apply to tests within their containing struct (determined by comparing name prefixes)
+- Skip tests with `skip_` prefix in test name: `test "skip_not implemented yet" {}`
 - Tracks slowest tests and supports colorized output
 - JUnit XML report generation for CI integration (via `TEST_JUNIT_PATH` env var)
+- Smart stack traces that filter framework frames and show source context
 
 **src/junit.zig** - JUnit XML report writer:
 - `JUnitWriter` - Collects test results and generates JUnit XML format
@@ -108,6 +120,22 @@ const AdminFactory = UserFactory.trait(.{ .role = "admin" });
 const user = UserFactory.buildWith(arena_alloc, .{});
 const admin = AdminFactory.buildWith(arena_alloc, .{ .name = "Custom Name" });
 ```
+
+### Loading Factory Definitions from .zon Files
+
+```zig
+// factories.zon
+.{
+    .user = .{ .id = 0, .name = "John Doe", .email = "john@example.com" },
+    .admin = .{ .id = 0, .name = "Admin User", .email = "admin@example.com" },
+}
+
+// In test file
+const factory_defs = @import("factories.zon");
+const UserFactory = Factory.defineFrom(User, factory_defs.user);
+```
+
+Benefits: compile-time field validation, separation of test data from test logic, reusable across files.
 
 ## ECS Integration Pattern (zig-ecs)
 

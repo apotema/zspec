@@ -128,6 +128,25 @@ fn coerceToUnion(comptime UnionType: type, default_value: anytype) UnionType {
     @compileError("No union field named '" ++ tag_name ++ "' in union type");
 }
 
+/// Build a nested struct from an anonymous source struct (for pointer-to-struct overrides)
+fn buildNestedStruct(comptime TargetType: type, source: anytype) TargetType {
+    var result: TargetType = undefined;
+    const SourceType = @TypeOf(source);
+
+    inline for (std.meta.fields(TargetType)) |field| {
+        if (@hasField(SourceType, field.name)) {
+            @field(result, field.name) = @field(source, field.name);
+        } else if (field.default_value_ptr) |default_ptr| {
+            const default_typed: *const field.type = @ptrCast(@alignCast(default_ptr));
+            @field(result, field.name) = default_typed.*;
+        } else {
+            @compileError("Missing field in nested override: " ++ field.name);
+        }
+    }
+
+    return result;
+}
+
 /// Build a typed value from an anonymous source value
 fn buildTypedPayload(comptime TargetType: type, source: anytype) TargetType {
     const SourceType = @TypeOf(source);
@@ -137,14 +156,18 @@ fn buildTypedPayload(comptime TargetType: type, source: anytype) TargetType {
         return source;
     }
 
-    // If both are structs, copy fields
+    // If both are structs, copy fields (with support for default values)
     if (@typeInfo(TargetType) == .@"struct" and @typeInfo(SourceType) == .@"struct") {
         var result: TargetType = undefined;
         inline for (std.meta.fields(TargetType)) |field| {
             if (@hasField(SourceType, field.name)) {
                 @field(result, field.name) = @field(source, field.name);
+            } else if (field.default_value_ptr) |default_ptr| {
+                // Use the field's default value if not provided
+                const default_typed: *const field.type = @ptrCast(@alignCast(default_ptr));
+                @field(result, field.name) = default_typed.*;
             } else {
-                @compileError("Missing field '" ++ field.name ++ "' in union payload");
+                @compileError("Missing field '" ++ field.name ++ "' in union payload (no default value)");
             }
         }
         return result;
@@ -237,37 +260,18 @@ fn FactoryImpl(comptime T: type, comptime defaults: anytype, comptime depth: usi
                 return coerceToUnion(FieldType, override_value);
             }
 
-            // Handle struct overrides for nested types
+            // Handle struct overrides for nested types (pointer-to-struct)
             if (@typeInfo(OverrideType) == .@"struct" and @typeInfo(FieldType) == .pointer) {
                 const ChildType = @typeInfo(FieldType).pointer.child;
                 if (@typeInfo(ChildType) == .@"struct") {
                     const ptr = alloc.create(ChildType) catch @panic("factory allocation failed");
-                    ptr.* = buildNestedStruct(ChildType, override_value, alloc);
+                    ptr.* = buildNestedStruct(ChildType, override_value);
                     return ptr;
                 }
             }
 
             // Coerce compatible types
             return @as(FieldType, override_value);
-        }
-
-        fn buildNestedStruct(comptime TargetType: type, source: anytype, alloc: std.mem.Allocator) TargetType {
-            var result: TargetType = undefined;
-            const SourceType = @TypeOf(source);
-
-            inline for (std.meta.fields(TargetType)) |field| {
-                if (@hasField(SourceType, field.name)) {
-                    @field(result, field.name) = @field(source, field.name);
-                } else if (field.default_value) |default_ptr| {
-                    const default_typed: *const field.type = @ptrCast(@alignCast(default_ptr));
-                    @field(result, field.name) = default_typed.*;
-                } else {
-                    _ = alloc;
-                    @compileError("Missing field in nested override: " ++ field.name);
-                }
-            }
-
-            return result;
         }
 
         fn computeFieldHash(comptime field_name: []const u8) usize {
@@ -424,7 +428,7 @@ fn TraitFactoryImpl(comptime T: type, comptime base_defaults: anytype, comptime 
             @compileError("No default value provided for field: " ++ field_name);
         }
 
-        fn processOverride(comptime FieldType: type, override_value: anytype, _: std.mem.Allocator) FieldType {
+        fn processOverride(comptime FieldType: type, override_value: anytype, alloc: std.mem.Allocator) FieldType {
             const OverrideType = @TypeOf(override_value);
 
             // Direct value assignment
@@ -435,6 +439,16 @@ fn TraitFactoryImpl(comptime T: type, comptime base_defaults: anytype, comptime 
             // Handle anonymous struct to union coercion
             if (@typeInfo(FieldType) == .@"union" and @typeInfo(OverrideType) == .@"struct") {
                 return coerceToUnion(FieldType, override_value);
+            }
+
+            // Handle struct overrides for nested types (pointer-to-struct)
+            if (@typeInfo(OverrideType) == .@"struct" and @typeInfo(FieldType) == .pointer) {
+                const ChildType = @typeInfo(FieldType).pointer.child;
+                if (@typeInfo(ChildType) == .@"struct") {
+                    const ptr = alloc.create(ChildType) catch @panic("factory allocation failed");
+                    ptr.* = buildNestedStruct(ChildType, override_value);
+                    return ptr;
+                }
             }
 
             // Coerce compatible types
@@ -518,11 +532,16 @@ fn TraitFactoryImpl(comptime T: type, comptime base_defaults: anytype, comptime 
         }
 
         fn mergeTrait(comptime base: anytype, comptime overlay: anytype) MergedTraitType(base, overlay) {
+            const OverlayType = @TypeOf(overlay);
             var result: MergedTraitType(base, overlay) = undefined;
+            // Only copy base fields that are NOT overridden by overlay (to avoid type mismatch)
             inline for (std.meta.fields(@TypeOf(base))) |field| {
-                @field(result, field.name) = @field(base, field.name);
+                if (!@hasField(OverlayType, field.name)) {
+                    @field(result, field.name) = @field(base, field.name);
+                }
             }
-            inline for (std.meta.fields(@TypeOf(overlay))) |field| {
+            // Copy all overlay fields
+            inline for (std.meta.fields(OverlayType)) |field| {
                 @field(result, field.name) = @field(overlay, field.name);
             }
             return result;

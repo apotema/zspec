@@ -66,12 +66,28 @@ pub fn build(b: *std.Build) void {
 
     const run_factory_union_tests = b.addRunArtifact(factory_union_tests);
 
+    // Factory .zon loading tests (issue #31)
+    const factory_zon_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/factory_zon_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "zspec", .module = zspec_mod },
+            },
+        }),
+        .test_runner = .{ .path = b.path("src/runner.zig"), .mode = .simple },
+    });
+
+    const run_factory_zon_tests = b.addRunArtifact(factory_zon_tests);
+
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
 
     const example_step = b.step("example", "Run example tests");
     example_step.dependOn(&run_example_tests.step);
     example_step.dependOn(&run_factory_union_tests.step);
+    example_step.dependOn(&run_factory_zon_tests.step);
 
     // Examples - individual example files
     const example_files = [_]struct { name: []const u8, path: []const u8 }{

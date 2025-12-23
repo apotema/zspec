@@ -1,0 +1,190 @@
+//! Tests for Factory.defineFrom() with .zon file loading
+//! Related to issue #31
+
+const std = @import("std");
+const zspec = @import("zspec");
+const expect = zspec.expect;
+const Factory = zspec.Factory;
+
+test {
+    zspec.runAll(@This());
+}
+
+// Type definitions for testing
+const User = struct {
+    id: u32,
+    name: []const u8,
+    email: []const u8,
+    age: u8,
+    active: bool,
+};
+
+const Product = struct {
+    id: u32,
+    name: []const u8,
+    price: f32,
+    in_stock: bool,
+};
+
+const Shape = union(enum) {
+    circle: struct { radius: f32 },
+    rectangle: struct { width: f32, height: f32 },
+};
+
+const ShapeVisual = struct {
+    shape: Shape,
+    z_index: u8,
+    visible: bool,
+};
+
+// Load factory definitions from .zon file
+const factory_defs = @import("factory_definitions.zon");
+
+// Define factories using defineFrom
+const UserFactory = Factory.defineFrom(User, factory_defs.user);
+const AdminUserFactory = Factory.defineFrom(User, factory_defs.admin_user);
+const ProductFactory = Factory.defineFrom(Product, factory_defs.product);
+const CircleShapeFactory = Factory.defineFrom(ShapeVisual, factory_defs.circle_shape);
+const RectangleShapeFactory = Factory.defineFrom(ShapeVisual, factory_defs.rectangle_shape);
+
+pub const DEFINE_FROM_BASIC = struct {
+    test "defineFrom creates factory with defaults from .zon" {
+        const user = UserFactory.build(.{});
+
+        try std.testing.expectEqualStrings("John Doe", user.name);
+        try std.testing.expectEqualStrings("john@example.com", user.email);
+        try expect.equal(user.age, 25);
+        try expect.toBeTrue(user.active);
+    }
+
+    test "defineFrom allows overriding fields" {
+        const user = UserFactory.build(.{
+            .name = "Jane Doe",
+            .age = 30,
+        });
+
+        try std.testing.expectEqualStrings("Jane Doe", user.name);
+        try std.testing.expectEqualStrings("john@example.com", user.email); // default from .zon
+        try expect.equal(user.age, 30);
+    }
+
+    test "defineFrom with different factory definitions" {
+        const admin = AdminUserFactory.build(.{});
+
+        try std.testing.expectEqualStrings("Admin User", admin.name);
+        try std.testing.expectEqualStrings("admin@example.com", admin.email);
+        try expect.equal(admin.age, 30);
+    }
+
+    test "defineFrom works with product type" {
+        const product = ProductFactory.build(.{});
+
+        try std.testing.expectEqualStrings("Widget", product.name);
+        try expect.equal(product.price, 9.99);
+        try expect.toBeTrue(product.in_stock);
+    }
+
+    test "defineFrom with product override" {
+        const product = ProductFactory.build(.{
+            .name = "Gadget",
+            .price = 19.99,
+            .in_stock = false,
+        });
+
+        try std.testing.expectEqualStrings("Gadget", product.name);
+        try expect.equal(product.price, 19.99);
+        try expect.toBeTrue(!product.in_stock);
+    }
+};
+
+pub const DEFINE_FROM_UNION = struct {
+    test "defineFrom with union type (circle)" {
+        const visual = CircleShapeFactory.build(.{});
+
+        try expect.toBeTrue(visual.visible);
+        try expect.equal(visual.z_index, 128);
+
+        switch (visual.shape) {
+            .circle => |c| try expect.equal(c.radius, 50.0),
+            .rectangle => return error.UnexpectedShape,
+        }
+    }
+
+    test "defineFrom with union type (rectangle)" {
+        const visual = RectangleShapeFactory.build(.{});
+
+        try expect.toBeTrue(visual.visible);
+        try expect.equal(visual.z_index, 64);
+
+        switch (visual.shape) {
+            .rectangle => |r| {
+                try expect.equal(r.width, 100.0);
+                try expect.equal(r.height, 50.0);
+            },
+            .circle => return error.UnexpectedShape,
+        }
+    }
+
+    test "defineFrom with union override" {
+        // Start with circle, override to rectangle
+        const visual = CircleShapeFactory.build(.{
+            .shape = .{ .rectangle = .{ .width = 200.0, .height = 100.0 } },
+        });
+
+        switch (visual.shape) {
+            .rectangle => |r| {
+                try expect.equal(r.width, 200.0);
+                try expect.equal(r.height, 100.0);
+            },
+            .circle => return error.UnexpectedShape,
+        }
+    }
+};
+
+pub const DEFINE_FROM_TRAITS = struct {
+    test "defineFrom factory supports traits" {
+        const InactiveUserFactory = UserFactory.trait(.{
+            .active = false,
+        });
+
+        const user = InactiveUserFactory.build(.{});
+
+        try std.testing.expectEqualStrings("John Doe", user.name); // from .zon
+        try expect.toBeTrue(!user.active); // from trait
+    }
+
+    test "defineFrom factory with chained traits" {
+        const CustomUserFactory = UserFactory.trait(.{
+            .active = false,
+        }).trait(.{
+            .age = 40,
+        });
+
+        const user = CustomUserFactory.build(.{});
+
+        try expect.toBeTrue(!user.active);
+        try expect.equal(user.age, 40);
+        try std.testing.expectEqualStrings("John Doe", user.name); // from .zon
+    }
+};
+
+pub const DEFINE_FROM_EQUIVALENCE = struct {
+    test "defineFrom produces same result as define" {
+        // Factory defined inline
+        const InlineFactory = Factory.define(User, .{
+            .id = 0,
+            .name = "John Doe",
+            .email = "john@example.com",
+            .age = 25,
+            .active = true,
+        });
+
+        const from_inline = InlineFactory.build(.{});
+        const from_zon = UserFactory.build(.{});
+
+        try std.testing.expectEqualStrings(from_inline.name, from_zon.name);
+        try std.testing.expectEqualStrings(from_inline.email, from_zon.email);
+        try expect.equal(from_inline.age, from_zon.age);
+        try expect.equal(from_inline.active, from_zon.active);
+    }
+};

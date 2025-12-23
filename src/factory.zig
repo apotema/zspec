@@ -99,6 +99,29 @@ pub fn define(comptime T: type, comptime defaults: anytype) type {
     return FactoryImpl(T, defaults, 0);
 }
 
+/// Define a factory from comptime data (e.g., imported from a .zon file)
+///
+/// This is a convenience wrapper around `define()` that makes the intent clear
+/// when loading factory definitions from external .zon files.
+///
+/// Example usage:
+/// ```zig
+/// const factory_defs = @import("test_factories.zon");
+/// pub const UserFactory = Factory.defineFrom(User, factory_defs.user);
+/// pub const ProductFactory = Factory.defineFrom(Product, factory_defs.product);
+/// ```
+///
+/// The .zon file would contain:
+/// ```zig
+/// .{
+///     .user = .{ .name = "John", .email = "john@example.com", .age = 25 },
+///     .product = .{ .name = "Widget", .price = 9.99, .in_stock = true },
+/// }
+/// ```
+pub fn defineFrom(comptime T: type, comptime zon_data: anytype) type {
+    return define(T, zon_data);
+}
+
 /// Coerce an anonymous struct to a union type
 /// e.g., .{ .circle = .{ .radius = 10 } } -> Shape{ .circle = ... }
 fn coerceToUnion(comptime UnionType: type, default_value: anytype) UnionType {

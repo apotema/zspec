@@ -310,12 +310,49 @@ const custom = UserFactory.build(.{ .name = "Jane" });
 ```
 
 Benefits:
-- **Typo detection**: `defineFrom()` validates field names at compile time
+- **Typo detection**: `defineFrom()` validates field names at compile time (including nested structs)
 - **Separation of concerns**: Test data lives in data files, test logic in test files
 - **Reusability**: Share factory definitions across multiple test files
 - **Type safety**: Full compile-time type checking via Zig's comptime system
 
 **Note:** `.zon` files contain static comptime data only. For dynamic features like sequences or lazy values, use `define()` directly or apply them via traits.
+
+### Nested Struct Support
+
+`Factory.defineFrom()` supports deeply nested structs with automatic coercion and validation:
+
+```zig
+const Color = struct { r: u8, g: u8, b: u8, a: u8 };
+const SpriteVisual = struct { tint: Color, scale: f32 };
+
+// Nested anonymous structs are automatically coerced to named types
+const sprite_zon = .{
+    .tint = .{ .r = 255, .g = 128, .b = 64, .a = 255 },
+    .scale = 1.5,
+};
+const SpriteFactory = Factory.defineFrom(SpriteVisual, sprite_zon);
+
+// Works with arbitrarily deep nesting (struct within struct within struct)
+const Inner = struct { value: u8 };
+const Middle = struct { inner: Inner };
+const Outer = struct { middle: Middle };
+
+const outer_zon = .{
+    .middle = .{ .inner = .{ .value = 42 } },
+};
+const OuterFactory = Factory.defineFrom(Outer, outer_zon);
+
+// Anonymous struct overrides work at build() callsite too
+const sprite = SpriteFactory.build(.{
+    .tint = .{ .r = 0, .g = 255, .b = 0, .a = 128 },
+});
+```
+
+Features:
+- **Recursive coercion**: Nested anonymous structs coerce to named types at any depth
+- **Recursive validation**: Typos in nested `.zon` fields are caught at compile time
+- **Union support**: Unions with nested struct payloads are validated and coerced
+- **Callsite overrides**: Anonymous structs work in `.build()` and `.trait()` calls
 
 ## Optional Integrations
 

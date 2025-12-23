@@ -135,7 +135,49 @@ const factory_defs = @import("factories.zon");
 const UserFactory = Factory.defineFrom(User, factory_defs.user);
 ```
 
-Benefits: compile-time field validation, separation of test data from test logic, reusable across files.
+Benefits: compile-time field validation (including nested structs), separation of test data from test logic, reusable across files.
+
+### Nested Struct Support
+
+`Factory.defineFrom()` supports deeply nested structs with automatic coercion and validation:
+
+```zig
+const Color = struct { r: u8, g: u8, b: u8, a: u8 };
+const SpriteVisual = struct { tint: Color, scale: f32 };
+
+// Nested anonymous structs are automatically coerced to named types
+const sprite_zon = .{
+    .tint = .{ .r = 255, .g = 128, .b = 64, .a = 255 },
+    .scale = 1.5,
+};
+const SpriteFactory = Factory.defineFrom(SpriteVisual, sprite_zon);
+
+// Works with arbitrarily deep nesting
+const Inner = struct { value: u8 };
+const Middle = struct { inner: Inner };
+const Outer = struct { middle: Middle };
+
+const outer_zon = .{
+    .middle = .{ .inner = .{ .value = 42 } },
+};
+const OuterFactory = Factory.defineFrom(Outer, outer_zon);
+
+// Anonymous struct overrides work at build() callsite too
+const sprite = SpriteFactory.build(.{
+    .tint = .{ .r = 0, .g = 255, .b = 0, .a = 128 },
+});
+
+// Traits with nested anonymous structs
+const RedTintFactory = SpriteFactory.trait(.{
+    .tint = .{ .r = 255, .g = 0, .b = 0, .a = 255 },
+});
+```
+
+Features:
+- **Recursive coercion**: Nested anonymous structs coerce to named types at any depth
+- **Recursive validation**: Typos in nested .zon fields are caught at compile time
+- **Union support**: Unions with nested struct payloads are validated and coerced
+- **Callsite overrides**: Anonymous structs work in `.build()` and `.trait()` calls
 
 ## ECS Integration Pattern (zig-ecs)
 

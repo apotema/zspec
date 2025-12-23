@@ -1,0 +1,52 @@
+.{
+    // User factory with common defaults
+    .user = .{
+        .id = 0,
+        .name = "John Doe",
+        .email = "john@example.com",
+        .role = "member",
+        .active = true,
+    },
+
+    // Admin user variant - same type, different defaults
+    .admin = .{
+        .id = 0,
+        .name = "Admin User",
+        .email = "admin@example.com",
+        .role = "admin",
+        .active = true,
+    },
+
+    // Product factory
+    .product = .{
+        .id = 0,
+        .name = "Widget",
+        .description = "A useful widget",
+        .price = 29.99,
+        .in_stock = true,
+        .quantity = 100,
+    },
+
+    // Out of stock product variant
+    .out_of_stock_product = .{
+        .id = 0,
+        .name = "Rare Item",
+        .description = "Currently unavailable",
+        .price = 99.99,
+        .in_stock = false,
+        .quantity = 0,
+    },
+
+    // Shape variants for game entities (unions work with anonymous syntax)
+    .circle = .{
+        .shape = .{ .circle = .{ .radius = 25.0 } },
+        .z_index = 10,
+        .visible = true,
+    },
+
+    .rectangle = .{
+        .shape = .{ .rectangle = .{ .width = 100.0, .height = 50.0 } },
+        .z_index = 5,
+        .visible = true,
+    },
+}

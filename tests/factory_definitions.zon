@@ -1,0 +1,32 @@
+.{
+    .user = .{
+        .id = 0,
+        .name = "John Doe",
+        .email = "john@example.com",
+        .age = 25,
+        .active = true,
+    },
+    .admin_user = .{
+        .id = 0,
+        .name = "Admin User",
+        .email = "admin@example.com",
+        .age = 30,
+        .active = true,
+    },
+    .product = .{
+        .id = 0,
+        .name = "Widget",
+        .price = 9.99,
+        .in_stock = true,
+    },
+    .circle_shape = .{
+        .shape = .{ .circle = .{ .radius = 50.0 } },
+        .z_index = 128,
+        .visible = true,
+    },
+    .rectangle_shape = .{
+        .shape = .{ .rectangle = .{ .width = 100.0, .height = 50.0 } },
+        .z_index = 64,
+        .visible = true,
+    },
+}

@@ -99,6 +99,61 @@ pub fn define(comptime T: type, comptime defaults: anytype) type {
     return FactoryImpl(T, defaults, 0);
 }
 
+/// Coerce an anonymous struct to a union type
+/// e.g., .{ .circle = .{ .radius = 10 } } -> Shape{ .circle = ... }
+fn coerceToUnion(comptime UnionType: type, default_value: anytype) UnionType {
+    const DefaultType = @TypeOf(default_value);
+    const default_fields = std.meta.fields(DefaultType);
+
+    // Anonymous struct must have exactly one field
+    if (default_fields.len != 1) {
+        @compileError("Union default value must be a struct with exactly one field matching a union tag");
+    }
+
+    const tag_name = default_fields[0].name;
+    const union_info = @typeInfo(UnionType).@"union";
+
+    // Find the expected payload type for this tag
+    inline for (union_info.fields) |union_field| {
+        if (comptime std.mem.eql(u8, union_field.name, tag_name)) {
+            const PayloadType = union_field.type;
+            const source_payload = @field(default_value, tag_name);
+
+            // Build the correctly-typed payload
+            const typed_payload = buildTypedPayload(PayloadType, source_payload);
+            return @unionInit(UnionType, tag_name, typed_payload);
+        }
+    }
+
+    @compileError("No union field named '" ++ tag_name ++ "' in union type");
+}
+
+/// Build a typed value from an anonymous source value
+fn buildTypedPayload(comptime TargetType: type, source: anytype) TargetType {
+    const SourceType = @TypeOf(source);
+
+    // If already the right type, return directly
+    if (SourceType == TargetType) {
+        return source;
+    }
+
+    // If both are structs, copy fields
+    if (@typeInfo(TargetType) == .@"struct" and @typeInfo(SourceType) == .@"struct") {
+        var result: TargetType = undefined;
+        inline for (std.meta.fields(TargetType)) |field| {
+            if (@hasField(SourceType, field.name)) {
+                @field(result, field.name) = @field(source, field.name);
+            } else {
+                @compileError("Missing field '" ++ field.name ++ "' in union payload");
+            }
+        }
+        return result;
+    }
+
+    // For non-struct types, try direct coercion
+    return source;
+}
+
 fn FactoryImpl(comptime T: type, comptime defaults: anytype, comptime depth: usize) type {
     if (depth > 3) {
         @compileError("Factory associations cannot be nested more than 3 levels deep");
@@ -175,6 +230,11 @@ fn FactoryImpl(comptime T: type, comptime defaults: anytype, comptime depth: usi
             // Direct value assignment
             if (OverrideType == FieldType) {
                 return override_value;
+            }
+
+            // Handle anonymous struct to union coercion
+            if (@typeInfo(FieldType) == .@"union" and @typeInfo(OverrideType) == .@"struct") {
+                return coerceToUnion(FieldType, override_value);
             }
 
             // Handle struct overrides for nested types
@@ -263,6 +323,12 @@ fn FactoryImpl(comptime T: type, comptime defaults: anytype, comptime depth: usi
             // Direct value
             if (DefaultType == FieldType) {
                 return default_value;
+            }
+
+            // Handle anonymous struct to union coercion
+            // e.g., .{ .circle = .{ .radius = 10 } } -> Shape{ .circle = ... }
+            if (@typeInfo(FieldType) == .@"union" and @typeInfo(DefaultType) == .@"struct") {
+                return coerceToUnion(FieldType, default_value);
             }
 
             // Try coercion
@@ -366,6 +432,11 @@ fn TraitFactoryImpl(comptime T: type, comptime base_defaults: anytype, comptime 
                 return override_value;
             }
 
+            // Handle anonymous struct to union coercion
+            if (@typeInfo(FieldType) == .@"union" and @typeInfo(OverrideType) == .@"struct") {
+                return coerceToUnion(FieldType, override_value);
+            }
+
             // Coerce compatible types
             return @as(FieldType, override_value);
         }
@@ -422,6 +493,12 @@ fn TraitFactoryImpl(comptime T: type, comptime base_defaults: anytype, comptime 
             // Direct value
             if (DefaultType == FieldType) {
                 return default_value;
+            }
+
+            // Handle anonymous struct to union coercion
+            // e.g., .{ .circle = .{ .radius = 10 } } -> Shape{ .circle = ... }
+            if (@typeInfo(FieldType) == .@"union" and @typeInfo(DefaultType) == .@"struct") {
+                return coerceToUnion(FieldType, default_value);
             }
 
             // Try coercion
@@ -669,4 +746,148 @@ test "resetSequences resets counters" {
 
     const after_reset = ItemFactory.build(.{});
     try std.testing.expectEqual(@as(u32, 1), after_reset.id);
+}
+
+test "factory with union field" {
+    const Shape = union(enum) {
+        circle: struct { radius: f32 },
+        rectangle: struct { width: f32, height: f32 },
+    };
+
+    const ShapeVisual = struct {
+        shape: Shape,
+        z_index: u8,
+    };
+
+    const ShapeVisualFactory = define(ShapeVisual, .{
+        .shape = Shape{ .circle = .{ .radius = 10.0 } },
+        .z_index = 128,
+    });
+
+    const visual = ShapeVisualFactory.build(.{});
+    try std.testing.expectEqual(@as(u8, 128), visual.z_index);
+
+    switch (visual.shape) {
+        .circle => |c| try std.testing.expectEqual(@as(f32, 10.0), c.radius),
+        .rectangle => return error.UnexpectedShape,
+    }
+}
+
+test "factory with union field override" {
+    const Shape = union(enum) {
+        circle: struct { radius: f32 },
+        rectangle: struct { width: f32, height: f32 },
+    };
+
+    const ShapeVisual = struct {
+        shape: Shape,
+        z_index: u8,
+    };
+
+    const ShapeVisualFactory = define(ShapeVisual, .{
+        .shape = Shape{ .circle = .{ .radius = 10.0 } },
+        .z_index = 128,
+    });
+
+    // Override with rectangle
+    const visual = ShapeVisualFactory.build(.{
+        .shape = Shape{ .rectangle = .{ .width = 20.0, .height = 30.0 } },
+    });
+
+    switch (visual.shape) {
+        .rectangle => |r| {
+            try std.testing.expectEqual(@as(f32, 20.0), r.width);
+            try std.testing.expectEqual(@as(f32, 30.0), r.height);
+        },
+        .circle => return error.UnexpectedShape,
+    }
+}
+
+test "factory with union field using anonymous struct syntax" {
+    const Shape = union(enum) {
+        circle: struct { radius: f32 },
+        rectangle: struct { width: f32, height: f32 },
+    };
+
+    const ShapeVisual = struct {
+        shape: Shape,
+        z_index: u8,
+    };
+
+    // Using anonymous struct syntax for union initialization
+    const ShapeVisualFactory = define(ShapeVisual, .{
+        .shape = .{ .circle = .{ .radius = 10.0 } },
+        .z_index = 128,
+    });
+
+    const visual = ShapeVisualFactory.build(.{});
+    try std.testing.expectEqual(@as(u8, 128), visual.z_index);
+
+    switch (visual.shape) {
+        .circle => |c| try std.testing.expectEqual(@as(f32, 10.0), c.radius),
+        .rectangle => return error.UnexpectedShape,
+    }
+}
+
+test "factory with union field override using anonymous struct syntax" {
+    const Shape = union(enum) {
+        circle: struct { radius: f32 },
+        rectangle: struct { width: f32, height: f32 },
+    };
+
+    const ShapeVisual = struct {
+        shape: Shape,
+        z_index: u8,
+    };
+
+    const ShapeVisualFactory = define(ShapeVisual, .{
+        .shape = .{ .circle = .{ .radius = 10.0 } },
+        .z_index = 128,
+    });
+
+    // Override with rectangle using anonymous struct syntax
+    const visual = ShapeVisualFactory.build(.{
+        .shape = .{ .rectangle = .{ .width = 20.0, .height = 30.0 } },
+    });
+
+    switch (visual.shape) {
+        .rectangle => |r| {
+            try std.testing.expectEqual(@as(f32, 20.0), r.width);
+            try std.testing.expectEqual(@as(f32, 30.0), r.height);
+        },
+        .circle => return error.UnexpectedShape,
+    }
+}
+
+test "factory trait with union field using anonymous struct syntax" {
+    const Shape = union(enum) {
+        circle: struct { radius: f32 },
+        rectangle: struct { width: f32, height: f32 },
+    };
+
+    const ShapeVisual = struct {
+        shape: Shape,
+        z_index: u8,
+    };
+
+    const ShapeVisualFactory = define(ShapeVisual, .{
+        .shape = .{ .circle = .{ .radius = 10.0 } },
+        .z_index = 128,
+    });
+
+    // Trait that changes the default shape to rectangle
+    const RectangleVisualFactory = ShapeVisualFactory.trait(.{
+        .shape = .{ .rectangle = .{ .width = 50.0, .height = 25.0 } },
+    });
+
+    const visual = RectangleVisualFactory.build(.{});
+    try std.testing.expectEqual(@as(u8, 128), visual.z_index);
+
+    switch (visual.shape) {
+        .rectangle => |r| {
+            try std.testing.expectEqual(@as(f32, 50.0), r.width);
+            try std.testing.expectEqual(@as(f32, 25.0), r.height);
+        },
+        .circle => return error.UnexpectedShape,
+    }
 }

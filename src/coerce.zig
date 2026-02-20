@@ -163,6 +163,6 @@ pub fn buildTypedPayload(comptime TargetType: type, source: anytype) TargetType 
         return result;
     }
 
-    // For non-struct types, try direct coercion
-    return source;
+    // For non-struct types, try explicit coercion
+    return @as(TargetType, source);
 }

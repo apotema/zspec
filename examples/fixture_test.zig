@@ -66,7 +66,7 @@ const EnemyData = struct {
 // =============================================================================
 
 // Load fixture data from a .zon file
-const fixture_data = @import("fixture_example.zon");
+const fixture_data = @import("fixtures.zon");
 
 // Single-struct fixtures: one call to define, then create anywhere
 const UserFixture = Fixture.define(User, fixture_data.user);

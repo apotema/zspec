@@ -98,6 +98,9 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
+    test_step.dependOn(&run_fixture_tests.step);
+    test_step.dependOn(&run_factory_union_tests.step);
+    test_step.dependOn(&run_factory_zon_tests.step);
 
     const example_step = b.step("example", "Run example tests");
     example_step.dependOn(&run_example_tests.step);
@@ -114,6 +117,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "examples-factory", .path = "examples/factory_test.zig" },
         .{ .name = "examples-factory-zon", .path = "examples/factory_zon_test.zig" },
         .{ .name = "examples-fixture", .path = "examples/fixture_test.zig" },
+        .{ .name = "examples-nested", .path = "examples/nested_contexts_test.zig" },
         .{ .name = "examples-ecs", .path = "examples/ecs_integration_test.zig" },
         .{ .name = "examples-fsm", .path = "examples/fsm_integration_test.zig" },
     };

@@ -191,6 +191,21 @@ pub const SCENARIO = struct {
         // Other structs unchanged
         try std.testing.expectEqualStrings("John Doe", s.user.name);
     }
+
+    test "partial nested override in scenario" {
+        // Override only user name — other user fields and other structs preserved
+        const s = CheckoutFixture.create(.{
+            .user = .{ .name = "Jane" },
+        });
+
+        try std.testing.expectEqualStrings("Jane", s.user.name);
+        // Other user fields from .zon
+        try expect.equal(s.user.id, 1);
+        try std.testing.expectEqualStrings("john@example.com", s.user.email);
+        // Other structs unchanged
+        try expect.equal(s.product.id, 10);
+        try expect.equal(s.order.quantity, 2);
+    }
 };
 
 pub const ARRAYS = struct {
@@ -283,6 +298,19 @@ pub const NESTED_STRUCTS = struct {
         try expect.equal(sprite.tint.g, 255);
         try expect.equal(sprite.tint.b, 0);
         try expect.equal(sprite.tint.a, 128);
+    }
+
+    test "partial nested override preserves defaults" {
+        // Override only one field in nested struct — others preserved from .zon
+        const sprite = SpriteFixture.create(.{
+            .tint = .{ .r = 0 },
+        });
+
+        try expect.equal(sprite.tint.r, 0); // overridden
+        try expect.equal(sprite.tint.g, 128); // from .zon default
+        try expect.equal(sprite.tint.b, 64); // from .zon default
+        try expect.equal(sprite.tint.a, 255); // from .zon default
+        try expect.equal(sprite.scale, 1.5); // from .zon default
     }
 };
 

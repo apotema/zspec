@@ -331,11 +331,6 @@ pub fn define(comptime T: type, comptime zon_data: anytype) type {
             // Coerce anonymous structs to named types
             // Return fully typed T
         }
-
-        /// Create an instance with a custom allocator (for string fields, etc.)
-        pub fn createWith(alloc: std.mem.Allocator, overrides: anytype) T {
-            // Same as create but uses allocator for any alloc-requiring fields
-        }
     };
 }
 ```

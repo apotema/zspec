@@ -19,7 +19,7 @@ const coerce = @import("coerce.zig");
 
 /// Define a fixture for a given type with .zon data defaults.
 ///
-/// Returns a type with `create(overrides)` and `createWith(alloc, overrides)` methods.
+/// Returns a type with a `create(overrides)` method.
 /// All fields in `zon_data` are validated against `T` at compile time.
 ///
 /// Example:
@@ -32,13 +32,8 @@ pub fn define(comptime T: type, comptime zon_data: anytype) type {
     validateFixtureData(T, zon_data);
 
     return struct {
-        /// Create an instance with optional field overrides (uses std.testing.allocator)
+        /// Create an instance with optional field overrides
         pub fn create(overrides: anytype) T {
-            return buildFixture(T, zon_data, overrides);
-        }
-
-        /// Create an instance with a custom allocator
-        pub fn createWith(_: std.mem.Allocator, overrides: anytype) T {
             return buildFixture(T, zon_data, overrides);
         }
     };
@@ -49,10 +44,32 @@ fn buildFixture(comptime T: type, comptime zon_data: anytype, overrides: anytype
     var result: T = undefined;
     const OverridesType = @TypeOf(overrides);
 
+    // Validate override fields exist in T (catch typos at compile time)
+    if (OverridesType != @TypeOf(.{})) {
+        inline for (std.meta.fields(OverridesType)) |override_field| {
+            if (!@hasField(T, override_field.name)) {
+                @compileError("Unknown override field '" ++ override_field.name ++ "'. " ++
+                    "Type '" ++ @typeName(T) ++ "' has no such field.");
+            }
+        }
+    }
+
     inline for (std.meta.fields(T)) |field| {
         // Check for callsite override first
         if (OverridesType != @TypeOf(.{}) and @hasField(OverridesType, field.name)) {
-            @field(result, field.name) = resolveFieldValue(field.type, @field(overrides, field.name));
+            const override_value = @field(overrides, field.name);
+            const OverrideFieldType = @TypeOf(override_value);
+
+            // If both override and .zon default are structs, and the target is a struct,
+            // merge them field-by-field (partial nested override)
+            if (@typeInfo(field.type) == .@"struct" and
+                @typeInfo(OverrideFieldType) == .@"struct" and
+                @hasField(@TypeOf(zon_data), field.name))
+            {
+                @field(result, field.name) = mergeOverride(field.type, @field(zon_data, field.name), override_value);
+            } else {
+                @field(result, field.name) = resolveFieldValue(field.type, override_value);
+            }
         }
         // Use .zon default
         else if (@hasField(@TypeOf(zon_data), field.name)) {
@@ -68,6 +85,41 @@ fn buildFixture(comptime T: type, comptime zon_data: anytype, overrides: anytype
         }
     }
 
+    return result;
+}
+
+/// Merge an override struct with .zon defaults field-by-field.
+/// When both are structs, the override only replaces specified fields; unspecified
+/// fields fall back to .zon defaults. This enables partial nested overrides like
+/// `.create(.{ .user = .{ .name = "Jane" } })` preserving other user fields from .zon.
+fn mergeOverride(comptime FieldType: type, comptime zon_default: anytype, override: anytype) FieldType {
+    const OverrideType = @TypeOf(override);
+
+    var result: FieldType = undefined;
+    inline for (std.meta.fields(FieldType)) |field| {
+        if (@hasField(OverrideType, field.name)) {
+            // Override provides this field — use it (recursively merge if also struct)
+            const override_value = @field(override, field.name);
+            const OverrideFieldType = @TypeOf(override_value);
+
+            if (@typeInfo(field.type) == .@"struct" and
+                @typeInfo(OverrideFieldType) == .@"struct" and
+                @hasField(@TypeOf(zon_default), field.name))
+            {
+                @field(result, field.name) = mergeOverride(field.type, @field(zon_default, field.name), override_value);
+            } else {
+                @field(result, field.name) = resolveFieldValue(field.type, override_value);
+            }
+        } else if (@hasField(@TypeOf(zon_default), field.name)) {
+            // Fall back to .zon default
+            @field(result, field.name) = resolveFieldValue(field.type, @field(zon_default, field.name));
+        } else if (field.default_value_ptr) |default_ptr| {
+            const default_typed: *const field.type = @ptrCast(@alignCast(default_ptr));
+            @field(result, field.name) = default_typed.*;
+        } else {
+            @compileError("Fixture: no value for field '" ++ field.name ++ "'");
+        }
+    }
     return result;
 }
 
@@ -112,6 +164,9 @@ fn resolveArrayField(comptime ArrayType: type, value: anytype) ArrayType {
 
     // Handle tuple (anonymous struct with numeric fields)
     if (@typeInfo(ValueType) == .@"struct") {
+        if (!@typeInfo(ValueType).@"struct".is_tuple) {
+            @compileError("Fixture: array field expects a tuple (.{ val1, val2, ... }), got a named struct");
+        }
         const value_fields = std.meta.fields(ValueType);
         if (value_fields.len != array_info.len) {
             @compileError(std.fmt.comptimePrint(
@@ -270,4 +325,33 @@ test "fixture scenario (struct of structs)" {
     try std.testing.expectEqualStrings("John", s.user.name);
     try std.testing.expectEqual(@as(u32, 10), s.product.id);
     try std.testing.expectEqual(s.product.seller_id, s.user.id);
+}
+
+test "partial nested override preserves .zon defaults" {
+    const User = struct { id: u32, name: []const u8, email: []const u8 };
+    const Scenario = struct { user: User };
+
+    const ScenarioFixture = define(Scenario, .{
+        .user = .{ .id = 1, .name = "John", .email = "john@example.com" },
+    });
+
+    // Override only name — id and email should come from .zon defaults
+    const s = ScenarioFixture.create(.{ .user = .{ .name = "Jane" } });
+    try std.testing.expectEqualStrings("Jane", s.user.name);
+    try std.testing.expectEqual(@as(u32, 1), s.user.id);
+    try std.testing.expectEqualStrings("john@example.com", s.user.email);
+}
+
+test "fixture with []const u8 fields" {
+    const Config = struct { host: []const u8, path: []const u8 };
+    const ConfigFixture = define(Config, .{ .host = "localhost", .path = "/api" });
+
+    const config = ConfigFixture.create(.{});
+    try std.testing.expectEqualStrings("localhost", config.host);
+    try std.testing.expectEqualStrings("/api", config.path);
+
+    // Override with different string
+    const custom = ConfigFixture.create(.{ .host = "example.com" });
+    try std.testing.expectEqualStrings("example.com", custom.host);
+    try std.testing.expectEqualStrings("/api", custom.path);
 }

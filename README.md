@@ -518,6 +518,19 @@ test "multiple allocations properly freed" {
 }
 ```
 
+Use `errdefer` for allocations that should be freed on error paths:
+
+```zig
+test "errdefer prevents leaks on error" {
+    const data = try allocator.alloc(u8, 100);
+    errdefer allocator.free(data);
+
+    // If this fails, errdefer frees data automatically
+    try processData(data);
+    allocator.free(data);
+}
+```
+
 Control leak detection behavior with environment variables:
 
 ```bash

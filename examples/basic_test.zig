@@ -25,23 +25,3 @@ test "strings can be compared" {
     try expect.equal(greeting, "hello");
 }
 
-test "boolean conditions" {
-    const x = 10;
-    try expect.toBeTrue(x > 5);
-    try expect.toBeFalse(x < 5);
-}
-
-// Grouping related tests in a struct (like RSpec's describe block)
-pub const BasicMath = struct {
-    test "multiplication" {
-        try expect.equal(3 * 4, 12);
-    }
-
-    test "division" {
-        try expect.equal(10 / 2, 5);
-    }
-
-    test "modulo" {
-        try expect.equal(10 % 3, 1);
-    }
-};

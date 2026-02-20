@@ -1,12 +1,10 @@
 //! Nested Contexts Example
 //!
-//! Demonstrates organizing tests using nested structs (like RSpec's describe/context):
-//! - Use `pub const` structs to create nested test groups
-//! - Structs can be nested to any depth
-//! - Each struct can have its own hooks that apply to its tests
-//! - Parent hooks cascade down to nested structs
+//! Demonstrates nested `pub const` structs for describe/context blocks.
+//! Parent hooks run before child context hooks, enabling layered setup.
 //!
-//! This pattern helps organize tests by feature, behavior, or scenario.
+//! Usage:
+//!   zig build examples-nested
 
 const std = @import("std");
 const zspec = @import("zspec");
@@ -16,213 +14,84 @@ test {
     zspec.runAll(@This());
 }
 
-// Top level: describe "StringUtils"
-pub const StringUtils = struct {
+// A minimal stack for demonstration
+const Stack = struct {
+    items: [10]i32 = .{0} ** 10,
+    top: usize = 0,
 
-    // describe "reverse"
-    pub const Reverse = struct {
-        test "reverses a simple string" {
-            // In real code, you'd test actual reverse function
-            const original = "hello";
-            const expected = "olleh";
-            _ = original;
-            _ = expected;
-            try expect.toBeTrue(true); // placeholder
-        }
+    fn push(self: *Stack, val: i32) void {
+        self.items[self.top] = val;
+        self.top += 1;
+    }
 
-        test "handles empty string" {
-            try expect.toBeTrue(true);
-        }
+    fn pop(self: *Stack) i32 {
+        self.top -= 1;
+        return self.items[self.top];
+    }
 
-        test "handles single character" {
-            try expect.toBeTrue(true);
-        }
+    fn peek(self: *const Stack) i32 {
+        return self.items[self.top - 1];
+    }
 
-        // context "with unicode"
-        pub const WithUnicode = struct {
-            test "reverses unicode characters" {
-                try expect.toBeTrue(true);
-            }
+    fn isEmpty(self: *const Stack) bool {
+        return self.top == 0;
+    }
 
-            test "preserves grapheme clusters" {
-                try expect.toBeTrue(true);
-            }
-        };
-    };
-
-    // describe "trim"
-    pub const Trim = struct {
-        test "removes leading whitespace" {
-            try expect.toBeTrue(true);
-        }
-
-        test "removes trailing whitespace" {
-            try expect.toBeTrue(true);
-        }
-
-        test "removes both" {
-            try expect.toBeTrue(true);
-        }
-    };
-
-    // describe "split"
-    pub const Split = struct {
-        test "splits on delimiter" {
-            try expect.toBeTrue(true);
-        }
-
-        // context "when delimiter not found"
-        pub const WhenDelimiterNotFound = struct {
-            test "returns original string" {
-                try expect.toBeTrue(true);
-            }
-        };
-
-        // context "when empty string"
-        pub const WhenEmptyString = struct {
-            test "returns empty array" {
-                try expect.toBeTrue(true);
-            }
-        };
-    };
+    fn size(self: *const Stack) usize {
+        return self.top;
+    }
 };
 
-// Another top-level describe: "HttpClient"
-pub const HttpClient = struct {
-    var client_initialized: bool = false;
+pub const EMPTY_STACK = struct {
+    var stack: Stack = undefined;
 
-    test "tests:beforeAll" {
-        client_initialized = true;
-        std.debug.print("\n  [HttpClient] Initialized\n", .{});
+    test "tests:before" {
+        stack = Stack{};
     }
 
-    test "tests:afterAll" {
-        client_initialized = false;
-        std.debug.print("  [HttpClient] Shutdown\n", .{});
+    test "is empty" {
+        try expect.toBeTrue(stack.isEmpty());
     }
 
-    // describe "GET requests"
-    pub const GET = struct {
-        test "sends GET request" {
-            try expect.toBeTrue(client_initialized);
-        }
-
-        // context "with query parameters"
-        pub const WithQueryParams = struct {
-            test "encodes parameters" {
-                try expect.toBeTrue(client_initialized);
-            }
-
-            test "handles special characters" {
-                try expect.toBeTrue(client_initialized);
-            }
-        };
-
-        // context "with headers"
-        pub const WithHeaders = struct {
-            test "sends custom headers" {
-                try expect.toBeTrue(client_initialized);
-            }
-        };
-    };
-
-    // describe "POST requests"
-    pub const POST = struct {
-        test "sends POST request" {
-            try expect.toBeTrue(client_initialized);
-        }
-
-        // context "with JSON body"
-        pub const WithJsonBody = struct {
-            test "sets content-type header" {
-                try expect.toBeTrue(client_initialized);
-            }
-
-            test "serializes body" {
-                try expect.toBeTrue(client_initialized);
-            }
-        };
-
-        // context "with form data"
-        pub const WithFormData = struct {
-            test "encodes form fields" {
-                try expect.toBeTrue(client_initialized);
-            }
-        };
-    };
-
-    // describe "error handling"
-    pub const ErrorHandling = struct {
-        // context "network errors"
-        pub const NetworkErrors = struct {
-            test "handles timeout" {
-                try expect.toBeTrue(true);
-            }
-
-            test "handles connection refused" {
-                try expect.toBeTrue(true);
-            }
-        };
-
-        // context "HTTP errors"
-        pub const HttpErrors = struct {
-            test "handles 404" {
-                try expect.toBeTrue(true);
-            }
-
-            test "handles 500" {
-                try expect.toBeTrue(true);
-            }
-
-            // context "with retry"
-            pub const WithRetry = struct {
-                test "retries on 503" {
-                    try expect.toBeTrue(true);
-                }
-
-                test "respects max retries" {
-                    try expect.toBeTrue(true);
-                }
-            };
-        };
-    };
-};
-
-// Example: Deep nesting with state at each level
-pub const DeepNesting = struct {
-    var level1: bool = false;
-
-    test "tests:beforeAll" {
-        level1 = true;
+    test "has size zero" {
+        try expect.equal(stack.size(), 0);
     }
 
-    pub const Level2 = struct {
-        var level2: bool = false;
-
-        test "tests:beforeAll" {
-            level2 = true;
+    pub const AFTER_ONE_PUSH = struct {
+        test "tests:before" {
+            stack.push(42);
         }
 
-        pub const Level3 = struct {
-            var level3: bool = false;
+        test "is not empty" {
+            try expect.toBeFalse(stack.isEmpty());
+        }
 
-            test "tests:beforeAll" {
-                level3 = true;
+        test "has size one" {
+            try expect.equal(stack.size(), 1);
+        }
+
+        test "has the pushed value on top" {
+            try expect.equal(stack.peek(), 42);
+        }
+
+        pub const AFTER_SECOND_PUSH = struct {
+            test "tests:before" {
+                stack.push(99);
             }
 
-            test "all parent states are set" {
-                try expect.toBeTrue(level1);
-                try expect.toBeTrue(level2);
-                try expect.toBeTrue(level3);
+            test "has size two" {
+                try expect.equal(stack.size(), 2);
             }
 
-            pub const Level4 = struct {
-                test "can access all parent state" {
-                    try expect.toBeTrue(level1);
-                    try expect.toBeTrue(level2);
-                    try expect.toBeTrue(level3);
-                }
-            };
+            test "has the latest value on top" {
+                try expect.equal(stack.peek(), 99);
+            }
+
+            test "pops in LIFO order" {
+                try expect.equal(stack.pop(), 99);
+                try expect.equal(stack.pop(), 42);
+                try expect.toBeTrue(stack.isEmpty());
+            }
         };
     };
 };

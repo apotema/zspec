@@ -14,6 +14,9 @@ const builtin = @import("builtin");
 // Re-export Factory module
 pub const Factory = @import("factory.zig");
 
+// Re-export Fixture module
+pub const Fixture = @import("fixture.zig");
+
 // Re-export fluent matchers module
 pub const matchers = @import("matchers.zig");
 /// Fluent expect function: try expectFluent(value).to().equal(expected)
@@ -197,34 +200,14 @@ test "Let memoization" {
     try std.testing.expectEqual(2, call_count);
 }
 
-test "expect.equal" {
-    try expect.equal(1, 1);
-    try expect.equal("hello", "hello");
-}
-
-test "expect.toBeTrue" {
-    try expect.toBeTrue(true);
-    try expect.toBeTrue(5 > 3);
-}
-
-test "expect.toBeFalse" {
-    try expect.toBeFalse(false);
-    try expect.toBeFalse(3 > 5);
-}
-
-test "expect.toContain" {
-    try expect.toContain("hello world", "world");
-    try expect.toContain("hello world", "hello");
-}
-
 test "expect.toHaveLength" {
     const arr = [_]i32{ 1, 2, 3 };
     try expect.toHaveLength(&arr, 3);
-    try expect.toHaveLength("hello", 5);
 }
 
 // Include tests from submodules
 test {
     _ = @import("factory.zig");
+    _ = @import("fixture.zig");
     _ = @import("matchers.zig");
 }

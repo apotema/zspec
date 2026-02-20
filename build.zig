@@ -81,23 +81,43 @@ pub fn build(b: *std.Build) void {
 
     const run_factory_zon_tests = b.addRunArtifact(factory_zon_tests);
 
+    // Fixture tests (RFC 001 / issue #38)
+    const fixture_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/fixture_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "zspec", .module = zspec_mod },
+            },
+        }),
+        .test_runner = .{ .path = b.path("src/runner.zig"), .mode = .simple },
+    });
+
+    const run_fixture_tests = b.addRunArtifact(fixture_tests);
+
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
+    test_step.dependOn(&run_fixture_tests.step);
+    test_step.dependOn(&run_factory_union_tests.step);
+    test_step.dependOn(&run_factory_zon_tests.step);
 
     const example_step = b.step("example", "Run example tests");
     example_step.dependOn(&run_example_tests.step);
     example_step.dependOn(&run_factory_union_tests.step);
     example_step.dependOn(&run_factory_zon_tests.step);
+    example_step.dependOn(&run_fixture_tests.step);
 
     // Examples - individual example files
     const example_files = [_]struct { name: []const u8, path: []const u8 }{
         .{ .name = "examples-basic", .path = "examples/basic_test.zig" },
         .{ .name = "examples-hooks", .path = "examples/hooks_test.zig" },
         .{ .name = "examples-let", .path = "examples/let_memoization_test.zig" },
-        .{ .name = "examples-nested", .path = "examples/nested_contexts_test.zig" },
         .{ .name = "examples-matchers", .path = "examples/matchers_test.zig" },
         .{ .name = "examples-factory", .path = "examples/factory_test.zig" },
         .{ .name = "examples-factory-zon", .path = "examples/factory_zon_test.zig" },
+        .{ .name = "examples-fixture", .path = "examples/fixture_test.zig" },
+        .{ .name = "examples-nested", .path = "examples/nested_contexts_test.zig" },
         .{ .name = "examples-ecs", .path = "examples/ecs_integration_test.zig" },
         .{ .name = "examples-fsm", .path = "examples/fsm_integration_test.zig" },
     };

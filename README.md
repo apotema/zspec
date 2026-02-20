@@ -13,7 +13,8 @@ RSpec-like testing framework for Zig.
 - **let** - Memoized lazy values (computed once per test)
 - **expect** - Custom matchers for readable assertions
 - **Fluent matchers** - RSpec/Jest-style `expect(x).to().equal(y)` syntax
-- **Factory** - FactoryBot-like test data generation
+- **Factory** - FactoryBot-like test data generation with sequences, lazy values, traits
+- **Fixture** - Static test data snapshots from `.zon` files with compile-time validation
 - **Scoped hooks** - Hooks only apply to tests within their struct
 - **Skip tests** - Skip tests with `skip_` prefix
 - **Memory leak detection** - Automatic leak detection with configurable behavior
@@ -64,45 +65,65 @@ test {
     zspec.runAll(@This());
 }
 
-// Top-level hooks run for all tests
-test "tests:beforeAll" {
-    std.debug.print("Starting tests...\n", .{});
-}
+const Calculator = struct {
+    value: i32,
 
-test "tests:afterAll" {
-    std.debug.print("Done!\n", .{});
-}
-
-pub const Calculator = struct {
-    var value: i32 = undefined;
-
-    // Scoped hooks - only run for tests in this struct
-    test "tests:before" {
-        value = 0;
+    pub fn init() Calculator {
+        return .{ .value = 0 };
     }
 
-    test "tests:after" {
-        // cleanup
+    pub fn add(self: *Calculator, n: i32) void {
+        self.value += n;
     }
 
-    test "adds numbers" {
-        value += 5;
-        try expect.equal(value, 5);
-    }
-
-    test "subtracts numbers" {
-        value -= 3;
-        try expect.equal(value, -3);
+    pub fn subtract(self: *Calculator, n: i32) void {
+        self.value -= n;
     }
 };
 
-// Nested contexts
-pub const StringUtils = struct {
-    pub const Uppercase = struct {
-        test "converts to uppercase" {
-            try expect.toBeTrue(true);
-        }
-    };
+pub const Addition = struct {
+    var calc: Calculator = undefined;
+
+    // Scoped hooks - only run for tests in this struct
+    test "tests:before" {
+        calc = Calculator.init();
+    }
+
+    test "adds positive numbers" {
+        calc.add(5);
+        try expect.equal(calc.value, 5);
+    }
+
+    test "adds negative numbers" {
+        calc.add(-3);
+        try expect.equal(calc.value, -3);
+    }
+
+    test "adds multiple times" {
+        calc.add(10);
+        calc.add(20);
+        calc.add(30);
+        try expect.equal(calc.value, 60);
+    }
+};
+
+pub const Subtraction = struct {
+    var calc: Calculator = undefined;
+
+    test "tests:before" {
+        calc = Calculator.init();
+        calc.value = 100;
+    }
+
+    test "subtracts positive numbers" {
+        calc.subtract(30);
+        try expect.equal(calc.value, 70);
+    }
+
+    test "can go negative" {
+        calc.subtract(150);
+        try expect.equal(calc.value, -50);
+    }
 };
 ```
 
@@ -160,18 +181,31 @@ pub const MyTests = struct {
 ```zig
 const expect = zspec.expect;
 
-try expect.equal(1, 1);
-try expect.notEqual(1, 2);
-try expect.toBeTrue(condition);
-try expect.toBeFalse(condition);
-try expect.toBeNull(optional);
-try expect.notToBeNull(optional);
-try expect.toBeGreaterThan(10, 5);
-try expect.toBeLessThan(5, 10);
-try expect.toContain("hello world", "world");
-try expect.toHaveLength(slice, 3);
-try expect.toBeEmpty(slice);
-try expect.notToBeEmpty(slice);
+// Equality
+try expect.equal(calc.value, 5);
+try expect.notEqual(user1.id, user2.id);
+
+// Boolean
+try expect.toBeTrue(user.active);
+try expect.toBeFalse(order.cancelled);
+
+// Optionals / Null
+const value: ?i32 = null;
+try expect.toBeNull(value);
+try expect.notToBeNull(user.email);
+
+// Comparisons
+try expect.toBeGreaterThan(user.id, 0);
+try expect.toBeLessThan(guest.roles.len, admin.roles.len);
+
+// Strings
+try expect.toContain(user.email.?, "@");
+
+// Lengths
+const arr = [_]i32{ 1, 2, 3, 4, 5 };
+try expect.toHaveLength(&arr, 5);
+try expect.toBeEmpty(guest.roles);
+try expect.notToBeEmpty(user.roles);
 ```
 
 ## Fluent Matchers
@@ -354,6 +388,59 @@ Features:
 - **Union support**: Unions with nested struct payloads are validated and coerced
 - **Callsite overrides**: Anonymous structs work in `.build()` and `.trait()` calls
 
+## Fixture (Static Test Data)
+
+ZSpec includes a Fixture module for static, pre-defined test data. Unlike Factory (which supports sequences, lazy values, and traits), Fixture is designed for known-good data snapshots.
+
+```zig
+const Fixture = zspec.Fixture;
+
+const User = struct { id: u32, name: []const u8, email: []const u8 };
+const Product = struct { id: u32, name: []const u8, price: f32, seller_id: u32 };
+const Order = struct { id: u32, user_id: u32, product_id: u32, quantity: u32 };
+
+// Define from .zon file
+const fixture_data = @import("fixtures/user.zon");
+const UserFixture = Fixture.define(User, fixture_data);
+
+// Or define inline
+const CheckoutScenario = struct { user: User, product: Product, order: Order };
+const CheckoutFixture = Fixture.define(CheckoutScenario, .{
+    .user = .{ .id = 1, .name = "John Doe", .email = "john@example.com" },
+    .product = .{ .id = 10, .name = "Widget", .price = 29.99, .seller_id = 1 },
+    .order = .{ .id = 100, .user_id = 1, .product_id = 10, .quantity = 2 },
+});
+```
+
+```zig
+test "create with defaults" {
+    const user = UserFixture.create(.{});
+    try expect.equal(user.id, 1);
+    try std.testing.expectEqualStrings("John Doe", user.name);
+}
+
+test "override fields at create time" {
+    const user = UserFixture.create(.{ .name = "Jane Smith" });
+    try std.testing.expectEqualStrings("Jane Smith", user.name);
+    try expect.equal(user.id, 1); // default preserved
+}
+
+test "scenario with cross-references" {
+    const s = CheckoutFixture.create(.{});
+    try expect.equal(s.order.user_id, s.user.id);
+    try expect.equal(s.order.product_id, s.product.id);
+}
+```
+
+### Fixture Features
+
+- `Fixture.define(T, data)` - Define a fixture from inline data or `.zon` file
+- `.create(.{})` - Create an instance with optional field overrides
+- **Scenario fixtures** - Struct of structs for related test data
+- **Fixed-size arrays** - `[N]T` fields populated from `.zon` tuples
+- **Nested struct coercion** - Anonymous structs coerce to named types recursively
+- **Compile-time validation** - Field name typos caught at compile time
+
 ## Optional Integrations
 
 ### ECS Integration (zig-ecs)
@@ -405,10 +492,42 @@ test "state transitions" {
 ZSpec automatically detects memory leaks using Zig's `std.testing.allocator`. By default, tests that leak memory will fail.
 
 ```zig
-test "detects leaks" {
-    const ptr = std.testing.allocator.create(u32) catch unreachable;
-    // Forgetting to free will cause test to fail with "Memory Leak Detected"
-    // std.testing.allocator.destroy(ptr);
+const allocator = zspec.allocator;
+
+test "properly cleaned up allocation does not leak" {
+    const data = try allocator.alloc(u8, 100);
+    defer allocator.free(data);
+    @memset(data, 0);
+    try expect.equal(data.len, 100);
+}
+
+test "multiple allocations properly freed" {
+    const allocs = try allocator.alloc([*]u8, 5);
+    defer allocator.free(allocs);
+
+    for (allocs, 0..) |_, i| {
+        const block = try allocator.alloc(u8, 64);
+        allocs[i] = block.ptr;
+    }
+
+    for (allocs) |ptr| {
+        allocator.free(ptr[0..64]);
+    }
+
+    try expect.equal(allocs.len, 5);
+}
+```
+
+Use `errdefer` for allocations that should be freed on error paths:
+
+```zig
+test "errdefer prevents leaks on error" {
+    const data = try allocator.alloc(u8, 100);
+    errdefer allocator.free(data);
+
+    // If this fails, errdefer frees data automatically
+    try processData(data);
+    allocator.free(data);
 }
 ```
 

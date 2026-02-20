@@ -1,0 +1,23 @@
+.{
+    .player = .{
+        .pos = .{ .x = 0.0, .y = 0.0 },
+        .health = .{ .current = 100, .max = 100 },
+    },
+    .enemies = .{
+        .{
+            .pos = .{ .x = 50.0, .y = 30.0 },
+            .health = .{ .current = 20, .max = 20 },
+            .kind = .slime,
+        },
+        .{
+            .pos = .{ .x = 80.0, .y = 60.0 },
+            .health = .{ .current = 50, .max = 50 },
+            .kind = .goblin,
+        },
+        .{
+            .pos = .{ .x = 120.0, .y = 10.0 },
+            .health = .{ .current = 200, .max = 200 },
+            .kind = .dragon,
+        },
+    },
+}

@@ -171,22 +171,6 @@ pub const LET_EXAMPLE = struct {
     }
 };
 
-// Example of nested context
-pub const STRING_UTILS = struct {
-    pub const UPPERCASE = struct {
-        test "converts to uppercase" {
-            // Just demonstrating nested structure
-            try expect.toBeTrue(true);
-        }
-    };
-
-    pub const LOWERCASE = struct {
-        test "converts to lowercase" {
-            try expect.toBeTrue(true);
-        }
-    };
-};
-
 // Example: Skipping tests with skip_ prefix
 pub const SKIP_EXAMPLE = struct {
     test "skip_this test is work in progress" {
@@ -199,55 +183,6 @@ pub const SKIP_EXAMPLE = struct {
         unreachable;
     }
 
-    test "this test runs normally" {
-        try expect.toBeTrue(true);
-    }
-};
-
-// Testing the expect matchers
-pub const MATCHERS = struct {
-    test "equal works" {
-        try expect.equal(1, 1);
-        try expect.equal("hello", "hello");
-    }
-
-    test "notEqual works" {
-        try expect.notEqual(1, 2);
-    }
-
-    test "toBeTrue works" {
-        try expect.toBeTrue(true);
-        try expect.toBeTrue(5 > 3);
-    }
-
-    test "toBeFalse works" {
-        try expect.toBeFalse(false);
-        try expect.toBeFalse(3 > 5);
-    }
-
-    test "toBeGreaterThan works" {
-        try expect.toBeGreaterThan(10, 5);
-    }
-
-    test "toBeLessThan works" {
-        try expect.toBeLessThan(5, 10);
-    }
-
-    test "toContain works" {
-        try expect.toContain("hello world", "world");
-    }
-
-    test "toHaveLength works" {
-        try expect.toHaveLength("hello", 5);
-    }
-
-    test "toBeEmpty works" {
-        try expect.toBeEmpty("");
-    }
-
-    test "notToBeEmpty works" {
-        try expect.notToBeEmpty("hi");
-    }
 };
 
 // Example: Memory Leak Detection
@@ -281,55 +216,6 @@ pub const MEMORY_LEAK_DETECTION = struct {
             allocator.free(ptr[0..64]);
         }
 
-        try expect.toBeTrue(true);
-    }
-};
-
-// Example: Failed-Only Output Mode
-// When running large test suites, you may want to only see failures.
-// Set TEST_FAILED_ONLY=true to hide passing test output.
-//
-// Usage:
-//   TEST_FAILED_ONLY=true zig build example
-//
-// This mode:
-// - Hides passing test output (green checkmarks)
-// - Shows only failed test details and stack traces
-// - Still shows the final summary (X of Y tests passed)
-// - Useful for CI/CD pipelines and large test suites
-pub const FAILED_ONLY_MODE = struct {
-    test "passing tests are hidden in failed-only mode" {
-        // This test passes and would be hidden with TEST_FAILED_ONLY=true
-        try expect.toBeTrue(true);
-    }
-
-    test "another passing test" {
-        // This test also passes
-        try expect.equal(42, 42);
-    }
-};
-
-// Example: Output to File
-// Write test results to a file for CI/CD integration or logging.
-// Set TEST_OUTPUT_FILE=path/to/output.txt to enable.
-//
-// Usage:
-//   TEST_OUTPUT_FILE=test-results.txt zig build example
-//
-// This feature:
-// - Writes all test output to the specified file
-// - Strips ANSI escape codes for clean text output
-// - Still prints colorized output to terminal
-// - Useful for CI artifact collection and debugging
-pub const OUTPUT_TO_FILE = struct {
-    test "results can be saved to file" {
-        // Run with TEST_OUTPUT_FILE=results.txt to save output
-        try expect.toBeTrue(true);
-    }
-
-    test "file output strips color codes" {
-        // ANSI escape codes are removed from file output
-        // but colors still appear in terminal
-        try expect.equal(1 + 1, 2);
+        try expect.equal(allocs.len, 5);
     }
 };

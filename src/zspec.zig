@@ -65,19 +65,79 @@ pub fn LetAlloc(comptime T: type, comptime init_fn: fn (std.mem.Allocator) T) ty
     };
 }
 
+/// Comparison helper for `expect.equal` / `expect.notEqual`. Dispatches
+/// on `@typeInfo` so types that don't support `==` (slices, error unions)
+/// still compare correctly:
+///
+///   - Slices compare element-wise via `std.mem.eql` so `[]const u8`
+///     equality "just works" without forcing callers into
+///     `std.testing.expectEqualStrings`.
+///   - Error unions compare by resolving both sides: same error → equal,
+///     same payload (recursively) → equal, mismatched outcomes → not equal.
+///   - Everything else falls through to plain `==`, preserving the
+///     existing behavior for primitives, enums, simple structs, etc.
+fn valuesEqual(actual: anytype, expected: @TypeOf(actual)) bool {
+    const T = @TypeOf(actual);
+    switch (@typeInfo(T)) {
+        .pointer => |p| {
+            if (p.size == .slice) return std.mem.eql(p.child, actual, expected);
+            return actual == expected;
+        },
+        .error_union => {
+            // Resolve both sides into either an error or a payload, then
+            // compare the matching variants. Using `if (x) |v| ... else |e| ...`
+            // (rather than `x catch |e| e`) is the only way to extract a
+            // bare error-set value from an error union without dragging
+            // the union back into the result type.
+            if (actual) |a_val| {
+                const e_val = expected catch return false;
+                return valuesEqual(a_val, e_val);
+            } else |a_err| {
+                if (expected) |_| {
+                    return false;
+                } else |e_err| {
+                    return a_err == e_err;
+                }
+            }
+        },
+        else => return actual == expected,
+    }
+}
+
 /// Custom expectation/matcher system
 pub const expect = struct {
     pub fn equal(actual: anytype, expected: @TypeOf(actual)) !void {
-        if (actual != expected) {
+        if (!valuesEqual(actual, expected)) {
             std.debug.print("\n  Expected: {any}\n  Actual:   {any}\n", .{ expected, actual });
             return error.ExpectationFailed;
         }
     }
 
     pub fn notEqual(actual: anytype, expected: @TypeOf(actual)) !void {
-        if (actual == expected) {
+        if (valuesEqual(actual, expected)) {
             std.debug.print("\n  Expected {any} to not equal {any}\n", .{ actual, expected });
             return error.ExpectationFailed;
+        }
+    }
+
+    /// Assert that an error-union value resolved to a specific error.
+    /// Mirrors `std.testing.expectError` with zspec's stderr formatting.
+    /// Use this instead of `expect.equal(result, error.Foo)` — `equal`
+    /// can compare error unions, but `toReturnError` reads better at the
+    /// call site for "this should have errored" assertions.
+    pub fn toReturnError(actual: anytype, expected: anyerror) !void {
+        const T = @TypeOf(actual);
+        if (@typeInfo(T) != .error_union)
+            @compileError("expect.toReturnError requires an error-union value, got " ++ @typeName(T));
+
+        if (actual) |_| {
+            std.debug.print("\n  Expected error.{s}, but got a value\n", .{@errorName(expected)});
+            return error.ExpectationFailed;
+        } else |actual_err| {
+            if (actual_err != expected) {
+                std.debug.print("\n  Expected error.{s}, got error.{s}\n", .{ @errorName(expected), @errorName(actual_err) });
+                return error.ExpectationFailed;
+            }
         }
     }
 
@@ -203,6 +263,113 @@ test "Let memoization" {
 test "expect.toHaveLength" {
     const arr = [_]i32{ 1, 2, 3 };
     try expect.toHaveLength(&arr, 3);
+}
+
+// ── expect.equal / notEqual / toReturnError on slices and error unions ──
+//
+// Pre-#40 these failed at compile time with
+// "operator != not allowed for type '[]const u8'" / "...error union".
+// The tests below pin the smart-dispatch in valuesEqual + the new
+// toReturnError matcher.
+
+test "expect.equal: slice of u8 (string) — equal contents" {
+    try expect.equal(@as([]const u8, "hello"), "hello");
+}
+
+test "expect.equal: slice of u8 — same length, different bytes" {
+    try std.testing.expectError(
+        error.ExpectationFailed,
+        expect.equal(@as([]const u8, "hello"), "world"),
+    );
+}
+
+test "expect.equal: slice of u8 — different length" {
+    try std.testing.expectError(
+        error.ExpectationFailed,
+        expect.equal(@as([]const u8, "hi"), "hello"),
+    );
+}
+
+test "expect.equal: slice of i32" {
+    const a = [_]i32{ 1, 2, 3 };
+    const b = [_]i32{ 1, 2, 3 };
+    try expect.equal(@as([]const i32, &a), @as([]const i32, &b));
+}
+
+test "expect.notEqual: slice of u8 — different contents" {
+    try expect.notEqual(@as([]const u8, "hello"), "world");
+}
+
+test "expect.notEqual: slice of u8 — equal contents fails" {
+    try std.testing.expectError(
+        error.ExpectationFailed,
+        expect.notEqual(@as([]const u8, "hello"), "hello"),
+    );
+}
+
+test "expect.equal: error union — both same error" {
+    const Result = error{Foo}!u32;
+    const a: Result = error.Foo;
+    const b: Result = error.Foo;
+    try expect.equal(a, b);
+}
+
+test "expect.equal: error union — both same payload" {
+    const Result = error{Foo}!u32;
+    const a: Result = 42;
+    const b: Result = 42;
+    try expect.equal(a, b);
+}
+
+test "expect.equal: error union — error vs payload fails" {
+    const Result = error{Foo}!u32;
+    const a: Result = error.Foo;
+    const b: Result = 42;
+    try std.testing.expectError(error.ExpectationFailed, expect.equal(a, b));
+}
+
+test "expect.equal: error union — different errors fail" {
+    const Result = error{ Foo, Bar }!u32;
+    const a: Result = error.Foo;
+    const b: Result = error.Bar;
+    try std.testing.expectError(error.ExpectationFailed, expect.equal(a, b));
+}
+
+test "expect.equal: error union with slice payload — recurses" {
+    const Result = error{Foo}![]const u8;
+    const a: Result = "hello";
+    const b: Result = "hello";
+    try expect.equal(a, b);
+}
+
+test "expect.toReturnError: matches expected error" {
+    const Result = error{Foo}!u32;
+    const a: Result = error.Foo;
+    try expect.toReturnError(a, error.Foo);
+}
+
+test "expect.toReturnError: mismatch fails" {
+    const Result = error{ Foo, Bar }!u32;
+    const a: Result = error.Foo;
+    try std.testing.expectError(
+        error.ExpectationFailed,
+        expect.toReturnError(a, error.Bar),
+    );
+}
+
+test "expect.toReturnError: payload-instead-of-error fails" {
+    const Result = error{Foo}!u32;
+    const a: Result = 42;
+    try std.testing.expectError(
+        error.ExpectationFailed,
+        expect.toReturnError(a, error.Foo),
+    );
+}
+
+// Sanity check: the existing non-slice non-error path still works.
+test "expect.equal: int (regression check for the dispatch fall-through)" {
+    try expect.equal(@as(u32, 42), 42);
+    try std.testing.expectError(error.ExpectationFailed, expect.equal(@as(u32, 1), @as(u32, 2)));
 }
 
 // Include tests from submodules

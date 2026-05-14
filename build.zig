@@ -4,11 +4,15 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Library module
+    // Library module — link_libc=true because runner.zig/junit.zig use
+    // std.c.{open,write,close,getenv} on POSIX (and Win32 directly on
+    // Windows). Without this, downstream test binaries that import zspec
+    // get a libc-link error on Linux.
     const zspec_mod = b.addModule("zspec", .{
         .root_source_file = b.path("src/zspec.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
     });
 
     // Optional ECS integration module

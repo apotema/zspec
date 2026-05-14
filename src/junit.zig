@@ -42,10 +42,31 @@ pub const JUnitWriter = struct {
     pub fn init(allocator: Allocator, suite_name: []const u8) JUnitWriter {
         return .{
             .allocator = allocator,
-            .results = .{},
+            .results = .empty,
             .suite_name = suite_name,
-            .start_time = std.time.timestamp(),
+            .start_time = timestampSeconds(),
         };
+    }
+
+    fn timestampSeconds() i64 {
+        // `std.time.timestamp` was removed in 0.16; query the real-time clock
+        // directly to keep this module independent of an `Io` instance.
+        const native_os = @import("builtin").os.tag;
+        switch (native_os) {
+            .windows => {
+                // Windows: FILETIME -> Unix seconds.
+                var ft: std.os.windows.FILETIME = undefined;
+                std.os.windows.kernel32.GetSystemTimeAsFileTime(&ft);
+                const ticks: i64 = (@as(i64, ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+                const unix_epoch_offset: i64 = 11644473600;
+                return @divTrunc(ticks, 10_000_000) - unix_epoch_offset;
+            },
+            else => {
+                var ts: std.posix.timespec = undefined;
+                _ = std.posix.system.clock_gettime(.REALTIME, &ts);
+                return ts.sec;
+            },
+        }
     }
 
     pub fn deinit(self: *JUnitWriter) void {
@@ -57,39 +78,59 @@ pub const JUnitWriter = struct {
     }
 
     pub fn writeToFile(self: *JUnitWriter, path: []const u8) !void {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
+        // Build the XML fully in memory, then dump via the libc file descriptor
+        // API. Doing the entire I/O dance via `std.Io` would require plumbing an
+        // `Io` instance through the test runner, which is overkill here.
+        var aw: std.Io.Writer.Allocating = .init(self.allocator);
+        defer aw.deinit();
 
-        try self.writeToFileHandle(file);
+        try self.write(&aw.writer);
+
+        const xml = aw.writer.buffered();
+        try writeAllToPath(path, xml);
     }
 
-    pub fn writeToFileHandle(self: *JUnitWriter, file: std.fs.File) !void {
-        var total_time_ns: u64 = 0;
-        var failures: usize = 0;
-        var skipped: usize = 0;
-
-        for (self.results.items) |result| {
-            total_time_ns += result.time_ns;
-            switch (result.status) {
-                .failed => failures += 1,
-                .skipped => skipped += 1,
-                .passed => {},
-            }
+    fn writeAllToPath(path: []const u8, bytes: []const u8) !void {
+        const native_os = @import("builtin").os.tag;
+        switch (native_os) {
+            .windows => {
+                // Open via Windows API; fall back to libc if available.
+                if (@hasDecl(std.c, "open")) {
+                    var path_buf: [std.fs.max_path_bytes:0]u8 = undefined;
+                    if (path.len >= path_buf.len) return error.NameTooLong;
+                    @memcpy(path_buf[0..path.len], path);
+                    path_buf[path.len] = 0;
+                    const c = std.c;
+                    const flags: c.O = .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true };
+                    const fd_int = c.open(@ptrCast(&path_buf), flags, 0o644);
+                    if (fd_int < 0) return error.FileOpenFailed;
+                    defer _ = c.close(fd_int);
+                    var remaining = bytes;
+                    while (remaining.len > 0) {
+                        const w = c.write(fd_int, remaining.ptr, remaining.len);
+                        if (w < 0) return error.WriteFailed;
+                        remaining = remaining[@intCast(w)..];
+                    }
+                } else return error.FileOpenFailed;
+            },
+            else => {
+                var path_buf: [std.fs.max_path_bytes:0]u8 = undefined;
+                if (path.len >= path_buf.len) return error.NameTooLong;
+                @memcpy(path_buf[0..path.len], path);
+                path_buf[path.len] = 0;
+                const c = std.c;
+                const flags: c.O = .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true };
+                const fd_int = c.open(@ptrCast(&path_buf), flags, @as(c.mode_t, 0o644));
+                if (fd_int < 0) return error.FileOpenFailed;
+                defer _ = c.close(fd_int);
+                var remaining = bytes;
+                while (remaining.len > 0) {
+                    const w = c.write(fd_int, remaining.ptr, remaining.len);
+                    if (w < 0) return error.WriteFailed;
+                    remaining = remaining[@intCast(w)..];
+                }
+            },
         }
-
-        const total_time_s = @as(f64, @floatFromInt(total_time_ns)) / 1_000_000_000.0;
-
-        // Build the XML in memory and write it all at once
-        var xml = std.ArrayListUnmanaged(u8){};
-        defer xml.deinit(self.allocator);
-
-        try self.write(xml.writer(self.allocator));
-
-        // Actually write to file
-        try file.writeAll(xml.items);
-
-        // Store totals for future reference
-        _ = total_time_s;
     }
 
     pub fn write(self: *JUnitWriter, writer: anytype) !void {
@@ -267,12 +308,12 @@ test "JUnitWriter generates valid XML" {
         .status = .skipped,
     });
 
-    var output: std.ArrayListUnmanaged(u8) = .{};
-    defer output.deinit(allocator);
+    var aw: std.Io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
 
-    try writer.write(output.writer(allocator));
+    try writer.write(&aw.writer);
 
-    const xml = output.items;
+    const xml = aw.writer.buffered();
 
     // Verify XML structure
     try std.testing.expect(std.mem.indexOf(u8, xml, "<?xml version=\"1.0\"") != null);
@@ -299,12 +340,12 @@ test "XML escaping" {
         .status = .passed,
     });
 
-    var output: std.ArrayListUnmanaged(u8) = .{};
-    defer output.deinit(allocator);
+    var aw: std.Io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
 
-    try writer.write(output.writer(allocator));
+    try writer.write(&aw.writer);
 
-    const xml = output.items;
+    const xml = aw.writer.buffered();
 
     // Verify escaping
     try std.testing.expect(std.mem.indexOf(u8, xml, "&lt;with&gt;") != null);

@@ -537,31 +537,39 @@ fn TraitFactoryImpl(comptime T: type, comptime base_defaults: anytype, comptime 
             const base_fields = std.meta.fields(BaseType);
             const overlay_fields = std.meta.fields(OverlayType);
 
-            var fields: [base_fields.len + overlay_fields.len]std.builtin.Type.StructField = undefined;
+            const total = base_fields.len + overlay_fields.len;
+            var names: [total][:0]const u8 = undefined;
+            var types: [total]type = undefined;
+            var attrs: [total]std.builtin.Type.StructField.Attributes = undefined;
             var count: usize = 0;
 
             // Add base fields (that are not in overlay)
             inline for (base_fields) |field| {
                 if (!@hasField(OverlayType, field.name)) {
-                    fields[count] = field;
+                    names[count] = field.name;
+                    types[count] = field.type;
+                    attrs[count] = .{
+                        .@"comptime" = field.is_comptime,
+                        .@"align" = field.alignment,
+                        .default_value_ptr = field.default_value_ptr,
+                    };
                     count += 1;
                 }
             }
 
             // Add all overlay fields
             inline for (overlay_fields) |field| {
-                fields[count] = field;
+                names[count] = field.name;
+                types[count] = field.type;
+                attrs[count] = .{
+                    .@"comptime" = field.is_comptime,
+                    .@"align" = field.alignment,
+                    .default_value_ptr = field.default_value_ptr,
+                };
                 count += 1;
             }
 
-            return @Type(.{
-                .@"struct" = .{
-                    .layout = .auto,
-                    .fields = fields[0..count],
-                    .decls = &.{},
-                    .is_tuple = false,
-                },
-            });
+            return @Struct(.auto, null, names[0..count], types[0..count], attrs[0..count]);
         }
     };
 }

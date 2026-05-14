@@ -67,7 +67,7 @@ const zigfsm = struct {
 
             pub fn init() Self {
                 return .{
-                    .transitions = .{},
+                    .transitions = .empty,
                     .allocator = std.testing.allocator,
                 };
             }

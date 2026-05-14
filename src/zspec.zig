@@ -225,7 +225,28 @@ pub const context = describe;
 
 /// Helper to run all tests in a spec struct
 pub fn runAll(comptime T: type) void {
-    _ = std.testing.refAllDeclsRecursive(T);
+    refAllDeclsRecursive(T);
+}
+
+/// Local replacement for the removed `std.testing.refAllDeclsRecursive`.
+/// Recursively references every declaration so nested test blocks are discovered.
+fn refAllDeclsRecursive(comptime T: type) void {
+    if (!@import("builtin").is_test) return;
+    const info = @typeInfo(T);
+    switch (info) {
+        .@"struct", .@"enum", .@"union", .@"opaque" => {
+            inline for (comptime std.meta.declarations(T)) |decl| {
+                if (@TypeOf(@field(T, decl.name)) == type) {
+                    switch (@typeInfo(@field(T, decl.name))) {
+                        .@"struct", .@"enum", .@"union", .@"opaque" => refAllDeclsRecursive(@field(T, decl.name)),
+                        else => {},
+                    }
+                }
+                _ = &@field(T, decl.name);
+            }
+        },
+        else => {},
+    }
 }
 
 // Re-export testing allocator for convenience

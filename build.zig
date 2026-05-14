@@ -31,10 +31,26 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/zspec.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
         }),
     });
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
+
+    // Unit tests for the JUnit XML writer. Lives in its own test exe because
+    // `src/runner.zig` (used as the test_runner for the example/factory test
+    // suites) also imports `junit.zig`; pulling it in via `src/zspec.zig`
+    // would make the same file belong to both the `root` and `zspec` modules.
+    const junit_unit_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/junit.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+    });
+
+    const run_junit_unit_tests = b.addRunArtifact(junit_unit_tests);
 
     // Example tests using zspec
     const example_tests = b.addTest(.{
@@ -42,6 +58,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tests/example_test.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
             .imports = &.{
                 .{ .name = "zspec", .module = zspec_mod },
             },
@@ -57,6 +74,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tests/factory_union_test.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
             .imports = &.{
                 .{ .name = "zspec", .module = zspec_mod },
             },
@@ -72,6 +90,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tests/factory_zon_test.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
             .imports = &.{
                 .{ .name = "zspec", .module = zspec_mod },
             },
@@ -87,6 +106,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tests/fixture_test.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
             .imports = &.{
                 .{ .name = "zspec", .module = zspec_mod },
             },
@@ -98,6 +118,7 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
+    test_step.dependOn(&run_junit_unit_tests.step);
     test_step.dependOn(&run_fixture_tests.step);
     test_step.dependOn(&run_factory_union_tests.step);
     test_step.dependOn(&run_factory_zon_tests.step);
@@ -142,6 +163,7 @@ pub fn build(b: *std.Build) void {
                 .root_source_file = b.path(ex.path),
                 .target = target,
                 .optimize = optimize,
+                .link_libc = true,
                 .imports = imports,
             }),
             .test_runner = .{ .path = b.path("src/runner.zig"), .mode = .simple },

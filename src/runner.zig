@@ -267,37 +267,113 @@ pub fn main() !void {
 
     // Exit with failure if tests failed or if leaks detected with fail_on_leak enabled
     const should_fail = fail > 0 or (env.fail_on_leak and leak > 0);
-    std.posix.exit(if (should_fail) 1 else 0);
+    std.process.exit(if (should_fail) 1 else 0);
 }
 
 const Printer = struct {
-    file: ?std.fs.File,
+    // `std.fs.File` moved to `std.Io.File` in 0.16 and requires an `Io` to
+    // operate. To keep the runner self-contained, the POSIX path uses raw libc
+    // and the Windows path uses Win32 directly (since `std.c.O` is `void` on
+    // Windows in 0.16).
+    handle: ?FileHandle,
+
+    const FileHandle = if (builtin.os.tag == .windows) std.os.windows.HANDLE else std.c.fd_t;
 
     fn init(output_path: ?[]const u8) Printer {
-        const file = if (output_path) |path|
-            std.fs.cwd().createFile(path, .{}) catch null
-        else
-            null;
-        return .{ .file = file };
+        const handle: ?FileHandle = if (output_path) |path| openForWrite(path) else null;
+        return .{ .handle = handle };
+    }
+
+    fn openForWrite(path: []const u8) ?FileHandle {
+        if (builtin.os.tag == .windows) {
+            const w = std.os.windows;
+            const k32 = struct {
+                extern "kernel32" fn CreateFileW(
+                    lpFileName: w.LPCWSTR,
+                    dwDesiredAccess: w.DWORD,
+                    dwShareMode: w.DWORD,
+                    lpSecurityAttributes: ?*anyopaque,
+                    dwCreationDisposition: w.DWORD,
+                    dwFlagsAndAttributes: w.DWORD,
+                    hTemplateFile: ?w.HANDLE,
+                ) callconv(.winapi) w.HANDLE;
+            };
+            const GENERIC_WRITE: w.DWORD = 0x40000000;
+            const CREATE_ALWAYS: w.DWORD = 2;
+            const FILE_ATTRIBUTE_NORMAL: w.DWORD = 0x80;
+
+            var path_buf_w: [std.fs.max_path_bytes]u16 = undefined;
+            const path_len_w = std.unicode.wtf8ToWtf16Le(&path_buf_w, path) catch return null;
+            if (path_len_w >= path_buf_w.len) return null;
+            path_buf_w[path_len_w] = 0;
+            const path_z: w.LPCWSTR = @ptrCast(&path_buf_w);
+
+            const h = k32.CreateFileW(path_z, GENERIC_WRITE, 0, null, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, null);
+            if (h == w.INVALID_HANDLE_VALUE) return null;
+            return h;
+        } else {
+            var buf: [std.fs.max_path_bytes:0]u8 = undefined;
+            if (path.len >= buf.len) return null;
+            @memcpy(buf[0..path.len], path);
+            buf[path.len] = 0;
+            const flags: std.c.O = .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true };
+            const opened = std.c.open(@ptrCast(&buf), flags, @as(std.c.mode_t, 0o644));
+            if (opened < 0) return null;
+            return opened;
+        }
     }
 
     fn deinit(self: *Printer) void {
-        if (self.file) |f| {
-            f.close();
+        if (self.handle) |h| {
+            if (builtin.os.tag == .windows) {
+                std.os.windows.CloseHandle(h);
+            } else {
+                _ = std.c.close(h);
+            }
+        }
+    }
+
+    fn writeHandle(handle: FileHandle, bytes: []const u8) void {
+        if (builtin.os.tag == .windows) {
+            const w = std.os.windows;
+            const k32 = struct {
+                extern "kernel32" fn WriteFile(
+                    hFile: w.HANDLE,
+                    lpBuffer: [*]const u8,
+                    nNumberOfBytesToWrite: w.DWORD,
+                    lpNumberOfBytesWritten: *w.DWORD,
+                    lpOverlapped: ?*anyopaque,
+                ) callconv(.winapi) w.BOOL;
+            };
+            var remaining = bytes;
+            while (remaining.len > 0) {
+                const chunk_len: w.DWORD = @intCast(@min(remaining.len, std.math.maxInt(w.DWORD)));
+                var written: w.DWORD = 0;
+                const ok = k32.WriteFile(handle, remaining.ptr, chunk_len, &written, null);
+                if (!ok.toBool() or written == 0) return;
+                remaining = remaining[written..];
+            }
+        } else {
+            var remaining = bytes;
+            while (remaining.len > 0) {
+                const n = std.c.write(handle, remaining.ptr, remaining.len);
+                if (n <= 0) return;
+                remaining = remaining[@intCast(n)..];
+            }
         }
     }
 
     fn fmt(self: Printer, comptime format: []const u8, args: anytype) void {
         std.debug.print(format, args);
         // Write to file, stripping ANSI escape codes
-        if (self.file) |f| {
+        if (self.handle) |h| {
             var buf: [4096]u8 = undefined;
             const output = std.fmt.bufPrint(&buf, format, args) catch return;
             // Skip if it's just ANSI control sequences (starts with \x1b or \r)
             if (output.len > 0 and (output[0] == '\x1b' or output[0] == '\r')) {
                 return;
             }
-            _ = f.write(output) catch {};
+            writeHandle(h, output);
         }
     }
 
@@ -313,10 +389,10 @@ const Printer = struct {
         std.debug.print("\x1b[0m", .{});
 
         // Write to file without ANSI escape codes
-        if (self.file) |f| {
+        if (self.handle) |h| {
             var buf: [4096]u8 = undefined;
             const output = std.fmt.bufPrint(&buf, format, args) catch return;
-            _ = f.write(output) catch {};
+            writeHandle(h, output);
         }
     }
 
@@ -329,17 +405,74 @@ const Status = enum {
     text,
 };
 
+/// Monotonic timer replacement for `std.time.Timer` (removed in Zig 0.16).
+/// Reads the monotonic clock directly via `std.posix.clock_gettime` on POSIX
+/// targets and `QueryPerformanceCounter` on Windows.
+const MonoTimer = struct {
+    started_ns: u64,
+
+    fn nowNanos() u64 {
+        const native_os = @import("builtin").os.tag;
+        switch (native_os) {
+            .windows => {
+                // `std.os.windows.QueryPerformance*` were removed in 0.16; bind
+                // the syscalls directly.
+                const w = std.os.windows;
+                const k32 = struct {
+                    extern "kernel32" fn QueryPerformanceCounter(lpPerformanceCount: *w.LARGE_INTEGER) callconv(.winapi) w.BOOL;
+                    extern "kernel32" fn QueryPerformanceFrequency(lpFrequency: *w.LARGE_INTEGER) callconv(.winapi) w.BOOL;
+                };
+                var ticks_li: w.LARGE_INTEGER = 0;
+                var freq_li: w.LARGE_INTEGER = 0;
+                _ = k32.QueryPerformanceCounter(&ticks_li);
+                _ = k32.QueryPerformanceFrequency(&freq_li);
+                const ticks: u64 = @intCast(ticks_li);
+                const freq: u64 = @intCast(freq_li);
+                // Convert ticks -> nanoseconds without overflowing.
+                const ns_per_s: u64 = std.time.ns_per_s;
+                const seconds: u64 = ticks / freq;
+                const remainder: u64 = ticks % freq;
+                return seconds * ns_per_s + (remainder * ns_per_s) / freq;
+            },
+            else => {
+                var ts: std.posix.timespec = undefined;
+                _ = std.posix.system.clock_gettime(.MONOTONIC, &ts);
+                const sec: u64 = @intCast(ts.sec);
+                const nsec: u64 = @intCast(ts.nsec);
+                return sec * std.time.ns_per_s + nsec;
+            },
+        }
+    }
+
+    fn start() MonoTimer {
+        return .{ .started_ns = nowNanos() };
+    }
+
+    fn reset(self: *MonoTimer) void {
+        self.started_ns = nowNanos();
+    }
+
+    fn lap(self: *MonoTimer) u64 {
+        const now_ns = nowNanos();
+        const elapsed = now_ns -% self.started_ns;
+        self.started_ns = now_ns;
+        return elapsed;
+    }
+};
+
 const SlowTracker = struct {
     const SlowestQueue = std.PriorityDequeue(TestInfo, void, compareTiming);
+    allocator: Allocator,
     max: usize,
     slowest: SlowestQueue,
-    timer: std.time.Timer,
+    timer: MonoTimer,
 
     fn init(alloc: Allocator, count: u32) SlowTracker {
-        const timer = std.time.Timer.start() catch @panic("failed to start timer");
-        var slow = SlowestQueue.init(alloc, {});
-        slow.ensureTotalCapacity(count) catch @panic("OOM");
+        const timer = MonoTimer.start();
+        var slow: SlowestQueue = .empty;
+        slow.ensureTotalCapacity(alloc, count) catch @panic("OOM");
         return .{
+            .allocator = alloc,
             .max = count,
             .timer = timer,
             .slowest = slow,
@@ -351,8 +484,8 @@ const SlowTracker = struct {
         name: []const u8,
     };
 
-    fn deinit(self: SlowTracker) void {
-        self.slowest.deinit();
+    fn deinit(self: *SlowTracker) void {
+        self.slowest.deinit(self.allocator);
     }
 
     fn startTiming(self: *SlowTracker) void {
@@ -366,7 +499,7 @@ const SlowTracker = struct {
         var slow = &self.slowest;
 
         if (slow.count() < self.max) {
-            slow.add(TestInfo{ .ns = ns, .name = test_name }) catch @panic("failed to track test timing");
+            slow.push(self.allocator, TestInfo{ .ns = ns, .name = test_name }) catch @panic("failed to track test timing");
             return ns;
         }
 
@@ -377,8 +510,8 @@ const SlowTracker = struct {
             }
         }
 
-        _ = slow.removeMin();
-        slow.add(TestInfo{ .ns = ns, .name = test_name }) catch @panic("failed to track test timing");
+        _ = slow.popMin();
+        slow.push(self.allocator, TestInfo{ .ns = ns, .name = test_name }) catch @panic("failed to track test timing");
         return ns;
     }
 
@@ -386,7 +519,7 @@ const SlowTracker = struct {
         var slow = self.slowest;
         const count = slow.count();
         printer.fmt("Slowest {d} test{s}: \n", .{ count, if (count != 1) "s" else "" });
-        while (slow.removeMinOrNull()) |info| {
+        while (slow.popMin()) |info| {
             const ms = @as(f64, @floatFromInt(info.ns)) / 1_000_000.0;
             printer.fmt("  {d:.2}ms\t{s}\n", .{ ms, info.name });
         }
@@ -433,13 +566,56 @@ const Env = struct {
     }
 
     fn readEnv(alloc: Allocator, key: []const u8) ?[]const u8 {
-        const v = std.process.getEnvVarOwned(alloc, key) catch |err| {
-            if (err == error.EnvironmentVariableNotFound) {
-                return null;
-            }
-            return null;
-        };
-        return v;
+        // `std.process.getEnvVarOwned` was removed in Zig 0.16. For a custom test
+        // runner we don't have an `Io` to feed `Environ.getAlloc`, so we read
+        // straight from libc's `getenv` (POSIX) or the Windows API directly
+        // (the `kernel32.GetEnvironmentVariableW` wrapper was dropped in 0.16).
+        const native_os = @import("builtin").os.tag;
+        switch (native_os) {
+            .windows => {
+                const w = std.os.windows;
+                const k32 = struct {
+                    extern "kernel32" fn GetEnvironmentVariableW(
+                        lpName: w.LPCWSTR,
+                        lpBuffer: ?[*]u16,
+                        nSize: w.DWORD,
+                    ) callconv(.winapi) w.DWORD;
+                };
+                // Convert key to WTF-16, query, and convert back.
+                var key_buf_w: [256]u16 = undefined;
+                const key_len_w = std.unicode.wtf8ToWtf16Le(&key_buf_w, key) catch return null;
+                if (key_len_w >= key_buf_w.len) return null;
+                key_buf_w[key_len_w] = 0;
+                const key_z: w.LPCWSTR = @ptrCast(&key_buf_w);
+
+                var val_buf_w: [4096]u16 = undefined;
+                const written = k32.GetEnvironmentVariableW(key_z, &val_buf_w, val_buf_w.len);
+                if (written == 0) {
+                    // `GetEnvironmentVariableW` returns 0 both when the var is
+                    // missing AND when it exists with an empty value. Disambiguate
+                    // via `GetLastError`: only `ERROR_ENVVAR_NOT_FOUND` is truly
+                    // "not present" (return null). An empty existing value should
+                    // be returned as a zero-length owned slice, matching the
+                    // POSIX `getenv` semantics where an empty string is present.
+                    const err = w.GetLastError();
+                    if (err == .ENVVAR_NOT_FOUND) return null;
+                    return alloc.dupe(u8, "") catch null;
+                }
+                if (written >= val_buf_w.len) return null;
+                const wtf16 = val_buf_w[0..written];
+                return std.unicode.wtf16LeToWtf8Alloc(alloc, wtf16) catch null;
+            },
+            else => {
+                // libc `getenv` requires a null-terminated key.
+                var key_buf: [256]u8 = undefined;
+                if (key.len >= key_buf.len) return null;
+                @memcpy(key_buf[0..key.len], key);
+                key_buf[key.len] = 0;
+                const c_value = std.c.getenv(@ptrCast(&key_buf)) orelse return null;
+                const span = std.mem.span(c_value);
+                return alloc.dupe(u8, span) catch null;
+            },
+        }
     }
 
     fn readEnvBool(alloc: Allocator, key: []const u8, deflt: bool) bool {
@@ -532,46 +708,23 @@ const logging = struct {
 
 /// Smart stack trace that filters out framework frames and shows source context
 const SmartStackTrace = struct {
-    const CONTEXT_LINES = 2; // Lines to show before/after the failure
-
     fn dump(trace: std.builtin.StackTrace) void {
         std.debug.print("\n\x1b[1mStack trace:\x1b[0m\n", .{});
 
-        var first_user_frame: ?struct { file: []const u8, line: u32 } = null;
+        // Zig 0.16 split `std.builtin.StackTrace` (handed to us by failing
+        // tests) from `std.debug.StackTrace` (consumed by `dumpStackTrace`).
+        // Build the debug variant before dumping.
+        const valid_addrs = trace.instruction_addresses[0..@min(trace.index, trace.instruction_addresses.len)];
+        const debug_trace: std.debug.StackTrace = .{
+            .return_addresses = valid_addrs,
+            .skipped = .none,
+        };
+        std.debug.dumpStackTrace(&debug_trace);
 
-        // Print full stack trace first
-        std.debug.dumpStackTrace(trace);
-
-        // Try to find and show source context for the first user frame
-        var debug_info = std.debug.getSelfDebugInfo() catch return;
-
-        const addrs = trace.instruction_addresses[0..@min(trace.index, trace.instruction_addresses.len)];
-        for (addrs) |addr| {
-            if (addr == 0) continue;
-
-            // Get symbol info using the address
-            const module = debug_info.getModuleForAddress(addr) catch continue;
-            const sym = module.getSymbolAtAddress(debug_info.allocator, addr -| 1) catch continue;
-
-            if (sym.source_location) |loc| {
-                // Check if this is a user frame (not framework code)
-                if (!isFrameworkFrame(loc.file_name)) {
-                    if (first_user_frame == null) {
-                        first_user_frame = .{
-                            .file = loc.file_name,
-                            .line = @intCast(loc.line),
-                        };
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Show source context for the first user frame
-        if (first_user_frame) |frame| {
-            std.debug.print("\n\x1b[1mSource context:\x1b[0m\n", .{});
-            printSourceContext(frame.file, frame.line);
-        }
+        // The Zig 0.15 source-context viewer relied on
+        // `std.debug.SelfInfo.getModuleForAddress` plus `std.fs.cwd().openFile`,
+        // both of which were reworked in 0.16. The default stack trace already
+        // prints source lines, so we no longer duplicate that here.
     }
 
     /// Checks if a stack frame is from framework code (runner, expect, zspec, std lib).
@@ -586,54 +739,6 @@ const SmartStackTrace = struct {
         return false;
     }
 
-    fn printSourceContext(file_name: []const u8, line: u32) void {
-        // Try to read the file using mmap or fallback approaches
-        const file = std.fs.cwd().openFile(file_name, .{}) catch return;
-        defer file.close();
-
-        // Read file in chunks and find lines
-        var buf: [8192]u8 = undefined;
-        var current_line: u32 = 1;
-        var line_start: usize = 0;
-        var total_read: usize = 0;
-
-        const start_line = if (line > CONTEXT_LINES) line - CONTEXT_LINES else 1;
-        const end_line = line + CONTEXT_LINES;
-
-        while (true) {
-            const bytes_read = file.read(&buf) catch return;
-            if (bytes_read == 0) break;
-
-            var i: usize = 0;
-            while (i < bytes_read) : (i += 1) {
-                if (buf[i] == '\n') {
-                    if (current_line >= start_line and current_line <= end_line) {
-                        const line_content = buf[line_start..i];
-                        const is_error_line = current_line == line;
-
-                        if (is_error_line) {
-                            std.debug.print("    \x1b[31m>{d:>4} | {s}\x1b[0m\n", .{ current_line, line_content });
-                        } else {
-                            std.debug.print("     {d:>4} | {s}\n", .{ current_line, line_content });
-                        }
-                    }
-                    current_line += 1;
-                    line_start = i + 1;
-
-                    if (current_line > end_line) return;
-                }
-            }
-
-            // Handle lines that span buffer boundaries
-            if (line_start < bytes_read) {
-                // Line continues in next buffer - for simplicity, just reset
-                line_start = 0;
-            } else {
-                line_start = 0;
-            }
-            total_read += bytes_read;
-        }
-    }
 };
 
 // Unit tests for SmartStackTrace

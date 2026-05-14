@@ -42,10 +42,36 @@ pub const JUnitWriter = struct {
     pub fn init(allocator: Allocator, suite_name: []const u8) JUnitWriter {
         return .{
             .allocator = allocator,
-            .results = .{},
+            .results = .empty,
             .suite_name = suite_name,
-            .start_time = std.time.timestamp(),
+            .start_time = timestampSeconds(),
         };
+    }
+
+    fn timestampSeconds() i64 {
+        // `std.time.timestamp` was removed in 0.16; query the real-time clock
+        // directly to keep this module independent of an `Io` instance.
+        const native_os = @import("builtin").os.tag;
+        switch (native_os) {
+            .windows => {
+                // Windows: FILETIME -> Unix seconds. The std.os.windows.kernel32
+                // wrappers were trimmed in 0.16, so declare the import directly.
+                const w = std.os.windows;
+                const k32 = struct {
+                    extern "kernel32" fn GetSystemTimeAsFileTime(lpSystemTimeAsFileTime: *w.FILETIME) callconv(.winapi) void;
+                };
+                var ft: w.FILETIME = undefined;
+                k32.GetSystemTimeAsFileTime(&ft);
+                const ticks: i64 = (@as(i64, ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+                const unix_epoch_offset: i64 = 11644473600;
+                return @divTrunc(ticks, 10_000_000) - unix_epoch_offset;
+            },
+            else => {
+                var ts: std.posix.timespec = undefined;
+                _ = std.posix.system.clock_gettime(.REALTIME, &ts);
+                return ts.sec;
+            },
+        }
     }
 
     pub fn deinit(self: *JUnitWriter) void {
@@ -57,39 +83,93 @@ pub const JUnitWriter = struct {
     }
 
     pub fn writeToFile(self: *JUnitWriter, path: []const u8) !void {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
+        // Build the XML fully in memory, then dump it through `writeAllToPath`,
+        // which uses Win32 `CreateFileW`/`WriteFile` on Windows and libc
+        // `open`/`write` elsewhere. Doing the entire I/O dance via `std.Io`
+        // would require plumbing an `Io` instance through the test runner,
+        // which is overkill here.
+        var aw: std.Io.Writer.Allocating = .init(self.allocator);
+        defer aw.deinit();
 
-        try self.writeToFileHandle(file);
+        try self.write(&aw.writer);
+
+        const xml = aw.writer.buffered();
+        try writeAllToPath(path, xml);
     }
 
-    pub fn writeToFileHandle(self: *JUnitWriter, file: std.fs.File) !void {
-        var total_time_ns: u64 = 0;
-        var failures: usize = 0;
-        var skipped: usize = 0;
+    fn writeAllToPath(path: []const u8, bytes: []const u8) !void {
+        // Reject paths with an interior NUL byte before we convert to a
+        // C/WTF-16 string. Without this guard `"report.xml\x00ignored"` would
+        // be silently truncated to `"report.xml"` by both libc `open` (NUL
+        // terminator) and `CreateFileW` (WTF-16 NUL terminator).
+        if (std.mem.indexOfScalar(u8, path, 0) != null) return error.InvalidPath;
 
-        for (self.results.items) |result| {
-            total_time_ns += result.time_ns;
-            switch (result.status) {
-                .failed => failures += 1,
-                .skipped => skipped += 1,
-                .passed => {},
-            }
+        const native_os = @import("builtin").os.tag;
+        switch (native_os) {
+            .windows => {
+                // Use the Win32 file API directly. `std.c.O` is `void` on
+                // Windows in 0.16, so we can't reuse the POSIX path here.
+                const w = std.os.windows;
+                const k32 = struct {
+                    extern "kernel32" fn CreateFileW(
+                        lpFileName: w.LPCWSTR,
+                        dwDesiredAccess: w.DWORD,
+                        dwShareMode: w.DWORD,
+                        lpSecurityAttributes: ?*anyopaque,
+                        dwCreationDisposition: w.DWORD,
+                        dwFlagsAndAttributes: w.DWORD,
+                        hTemplateFile: ?w.HANDLE,
+                    ) callconv(.winapi) w.HANDLE;
+                    extern "kernel32" fn WriteFile(
+                        hFile: w.HANDLE,
+                        lpBuffer: [*]const u8,
+                        nNumberOfBytesToWrite: w.DWORD,
+                        lpNumberOfBytesWritten: *w.DWORD,
+                        lpOverlapped: ?*anyopaque,
+                    ) callconv(.winapi) w.BOOL;
+                };
+                const GENERIC_WRITE: w.DWORD = 0x40000000;
+                const CREATE_ALWAYS: w.DWORD = 2;
+                const FILE_ATTRIBUTE_NORMAL: w.DWORD = 0x80;
+
+                // Convert path to WTF-16 (null-terminated).
+                var path_buf_w: [std.fs.max_path_bytes]u16 = undefined;
+                const path_len_w = std.unicode.wtf8ToWtf16Le(&path_buf_w, path) catch return error.InvalidPath;
+                if (path_len_w >= path_buf_w.len) return error.NameTooLong;
+                path_buf_w[path_len_w] = 0;
+                const path_z: w.LPCWSTR = @ptrCast(&path_buf_w);
+
+                const h = k32.CreateFileW(path_z, GENERIC_WRITE, 0, null, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, null);
+                if (h == w.INVALID_HANDLE_VALUE) return error.FileOpenFailed;
+                defer w.CloseHandle(h);
+
+                var remaining = bytes;
+                while (remaining.len > 0) {
+                    const chunk_len: w.DWORD = @intCast(@min(remaining.len, std.math.maxInt(w.DWORD)));
+                    var written: w.DWORD = 0;
+                    const ok = k32.WriteFile(h, remaining.ptr, chunk_len, &written, null);
+                    if (!ok.toBool() or written == 0) return error.WriteFailed;
+                    remaining = remaining[written..];
+                }
+            },
+            else => {
+                var path_buf: [std.fs.max_path_bytes:0]u8 = undefined;
+                if (path.len >= path_buf.len) return error.NameTooLong;
+                @memcpy(path_buf[0..path.len], path);
+                path_buf[path.len] = 0;
+                const c = std.c;
+                const flags: c.O = .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true };
+                const fd_int = c.open(@ptrCast(&path_buf), flags, @as(c.mode_t, 0o644));
+                if (fd_int < 0) return error.FileOpenFailed;
+                defer _ = c.close(fd_int);
+                var remaining = bytes;
+                while (remaining.len > 0) {
+                    const w_ret = c.write(fd_int, remaining.ptr, remaining.len);
+                    if (w_ret < 0) return error.WriteFailed;
+                    remaining = remaining[@intCast(w_ret)..];
+                }
+            },
         }
-
-        const total_time_s = @as(f64, @floatFromInt(total_time_ns)) / 1_000_000_000.0;
-
-        // Build the XML in memory and write it all at once
-        var xml = std.ArrayListUnmanaged(u8){};
-        defer xml.deinit(self.allocator);
-
-        try self.write(xml.writer(self.allocator));
-
-        // Actually write to file
-        try file.writeAll(xml.items);
-
-        // Store totals for future reference
-        _ = total_time_s;
     }
 
     pub fn write(self: *JUnitWriter, writer: anytype) !void {
@@ -267,12 +347,12 @@ test "JUnitWriter generates valid XML" {
         .status = .skipped,
     });
 
-    var output: std.ArrayListUnmanaged(u8) = .{};
-    defer output.deinit(allocator);
+    var aw: std.Io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
 
-    try writer.write(output.writer(allocator));
+    try writer.write(&aw.writer);
 
-    const xml = output.items;
+    const xml = aw.writer.buffered();
 
     // Verify XML structure
     try std.testing.expect(std.mem.indexOf(u8, xml, "<?xml version=\"1.0\"") != null);
@@ -284,6 +364,61 @@ test "JUnitWriter generates valid XML" {
     try std.testing.expect(std.mem.indexOf(u8, xml, "<testcase name=\"test one\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, xml, "<failure") != null);
     try std.testing.expect(std.mem.indexOf(u8, xml, "<skipped/>") != null);
+}
+
+test "writeToFile writes XML to disk" {
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    // `writeToFile` opens via libc `open` / Win32 `CreateFileW`, both of which
+    // resolve relative to the process cwd. `tmpDir` creates
+    // `.zig-cache/tmp/<sub_path>/`, so build a cwd-relative path to drop the
+    // report into and then read it back through `Io.Dir.readFileAlloc`.
+    const file_name = "report.xml";
+    const cwd_path = try std.fs.path.join(allocator, &.{ ".zig-cache", "tmp", &tmp.sub_path, file_name });
+    defer allocator.free(cwd_path);
+
+    var writer = JUnitWriter.init(allocator, "file-suite");
+    defer writer.deinit();
+
+    try writer.addResult(.{
+        .name = "writes to disk",
+        .classname = "FileTest",
+        .time_ns = 1_500_000,
+        .status = .passed,
+    });
+
+    try writer.writeToFile(cwd_path);
+
+    // Read it back through the tmp `Io.Dir` and verify the on-disk contents
+    // contain the expected XML structure.
+    const contents = try tmp.dir.readFileAlloc(io, file_name, allocator, .limited(1 << 20));
+    defer allocator.free(contents);
+
+    try std.testing.expect(std.mem.indexOf(u8, contents, "<?xml version=\"1.0\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "<testsuite name=\"file-suite\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "<testcase name=\"writes to disk\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "classname=\"FileTest\"") != null);
+}
+
+test "writeToFile rejects path with interior NUL" {
+    const allocator = std.testing.allocator;
+
+    var writer = JUnitWriter.init(allocator, "nul-suite");
+    defer writer.deinit();
+
+    try writer.addResult(.{
+        .name = "noop",
+        .classname = "NulTest",
+        .time_ns = 0,
+        .status = .passed,
+    });
+
+    const bad_path = "report.xml\x00ignored";
+    try std.testing.expectError(error.InvalidPath, writer.writeToFile(bad_path));
 }
 
 test "XML escaping" {
@@ -299,12 +434,12 @@ test "XML escaping" {
         .status = .passed,
     });
 
-    var output: std.ArrayListUnmanaged(u8) = .{};
-    defer output.deinit(allocator);
+    var aw: std.Io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
 
-    try writer.write(output.writer(allocator));
+    try writer.write(&aw.writer);
 
-    const xml = output.items;
+    const xml = aw.writer.buffered();
 
     // Verify escaping
     try std.testing.expect(std.mem.indexOf(u8, xml, "&lt;with&gt;") != null);

@@ -213,8 +213,10 @@ pub const MEMORY_LEAK_DETECTION = struct {
 
         // Clean up in reverse order. Note: in Zig 0.16 we have to coerce the
         // many-pointer slice to `[]u8` explicitly so `Allocator.free` accepts it.
-        for (allocs) |ptr| {
-            const slice: []u8 = ptr[0..64];
+        var i: usize = allocs.len;
+        while (i > 0) {
+            i -= 1;
+            const slice: []u8 = allocs[i][0..64];
             allocator.free(slice);
         }
 

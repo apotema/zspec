@@ -590,7 +590,17 @@ const Env = struct {
 
                 var val_buf_w: [4096]u16 = undefined;
                 const written = k32.GetEnvironmentVariableW(key_z, &val_buf_w, val_buf_w.len);
-                if (written == 0) return null;
+                if (written == 0) {
+                    // `GetEnvironmentVariableW` returns 0 both when the var is
+                    // missing AND when it exists with an empty value. Disambiguate
+                    // via `GetLastError`: only `ERROR_ENVVAR_NOT_FOUND` is truly
+                    // "not present" (return null). An empty existing value should
+                    // be returned as a zero-length owned slice, matching the
+                    // POSIX `getenv` semantics where an empty string is present.
+                    const err = w.GetLastError();
+                    if (err == .ENVVAR_NOT_FOUND) return null;
+                    return alloc.dupe(u8, "") catch null;
+                }
                 if (written >= val_buf_w.len) return null;
                 const wtf16 = val_buf_w[0..written];
                 return std.unicode.wtf16LeToWtf8Alloc(alloc, wtf16) catch null;

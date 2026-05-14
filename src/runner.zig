@@ -272,49 +272,108 @@ pub fn main() !void {
 
 const Printer = struct {
     // `std.fs.File` moved to `std.Io.File` in 0.16 and requires an `Io` to
-    // operate. To keep the runner self-contained we keep a raw libc fd instead.
-    fd: ?std.c.fd_t,
+    // operate. To keep the runner self-contained, the POSIX path uses raw libc
+    // and the Windows path uses Win32 directly (since `std.c.O` is `void` on
+    // Windows in 0.16).
+    handle: ?FileHandle,
+
+    const FileHandle = if (builtin.os.tag == .windows) std.os.windows.HANDLE else std.c.fd_t;
 
     fn init(output_path: ?[]const u8) Printer {
-        const fd: ?std.c.fd_t = if (output_path) |path| blk: {
+        const handle: ?FileHandle = if (output_path) |path| openForWrite(path) else null;
+        return .{ .handle = handle };
+    }
+
+    fn openForWrite(path: []const u8) ?FileHandle {
+        if (builtin.os.tag == .windows) {
+            const w = std.os.windows;
+            const k32 = struct {
+                extern "kernel32" fn CreateFileW(
+                    lpFileName: w.LPCWSTR,
+                    dwDesiredAccess: w.DWORD,
+                    dwShareMode: w.DWORD,
+                    lpSecurityAttributes: ?*anyopaque,
+                    dwCreationDisposition: w.DWORD,
+                    dwFlagsAndAttributes: w.DWORD,
+                    hTemplateFile: ?w.HANDLE,
+                ) callconv(.winapi) w.HANDLE;
+            };
+            const GENERIC_WRITE: w.DWORD = 0x40000000;
+            const CREATE_ALWAYS: w.DWORD = 2;
+            const FILE_ATTRIBUTE_NORMAL: w.DWORD = 0x80;
+
+            var path_buf_w: [std.fs.max_path_bytes]u16 = undefined;
+            const path_len_w = std.unicode.wtf8ToWtf16Le(&path_buf_w, path) catch return null;
+            if (path_len_w >= path_buf_w.len) return null;
+            path_buf_w[path_len_w] = 0;
+            const path_z: w.LPCWSTR = @ptrCast(&path_buf_w);
+
+            const h = k32.CreateFileW(path_z, GENERIC_WRITE, 0, null, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, null);
+            if (h == w.INVALID_HANDLE_VALUE) return null;
+            return h;
+        } else {
             var buf: [std.fs.max_path_bytes:0]u8 = undefined;
-            if (path.len >= buf.len) break :blk null;
+            if (path.len >= buf.len) return null;
             @memcpy(buf[0..path.len], path);
             buf[path.len] = 0;
             const flags: std.c.O = .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true };
             const opened = std.c.open(@ptrCast(&buf), flags, @as(std.c.mode_t, 0o644));
-            if (opened < 0) break :blk null;
-            break :blk opened;
-        } else null;
-        return .{ .fd = fd };
-    }
-
-    fn deinit(self: *Printer) void {
-        if (self.fd) |f| {
-            _ = std.c.close(f);
+            if (opened < 0) return null;
+            return opened;
         }
     }
 
-    fn writeFd(fd: std.c.fd_t, bytes: []const u8) void {
-        var remaining = bytes;
-        while (remaining.len > 0) {
-            const n = std.c.write(fd, remaining.ptr, remaining.len);
-            if (n <= 0) return;
-            remaining = remaining[@intCast(n)..];
+    fn deinit(self: *Printer) void {
+        if (self.handle) |h| {
+            if (builtin.os.tag == .windows) {
+                std.os.windows.CloseHandle(h);
+            } else {
+                _ = std.c.close(h);
+            }
+        }
+    }
+
+    fn writeHandle(handle: FileHandle, bytes: []const u8) void {
+        if (builtin.os.tag == .windows) {
+            const w = std.os.windows;
+            const k32 = struct {
+                extern "kernel32" fn WriteFile(
+                    hFile: w.HANDLE,
+                    lpBuffer: [*]const u8,
+                    nNumberOfBytesToWrite: w.DWORD,
+                    lpNumberOfBytesWritten: *w.DWORD,
+                    lpOverlapped: ?*anyopaque,
+                ) callconv(.winapi) w.BOOL;
+            };
+            var remaining = bytes;
+            while (remaining.len > 0) {
+                const chunk_len: w.DWORD = @intCast(@min(remaining.len, std.math.maxInt(w.DWORD)));
+                var written: w.DWORD = 0;
+                const ok = k32.WriteFile(handle, remaining.ptr, chunk_len, &written, null);
+                if (!ok.toBool() or written == 0) return;
+                remaining = remaining[written..];
+            }
+        } else {
+            var remaining = bytes;
+            while (remaining.len > 0) {
+                const n = std.c.write(handle, remaining.ptr, remaining.len);
+                if (n <= 0) return;
+                remaining = remaining[@intCast(n)..];
+            }
         }
     }
 
     fn fmt(self: Printer, comptime format: []const u8, args: anytype) void {
         std.debug.print(format, args);
         // Write to file, stripping ANSI escape codes
-        if (self.fd) |f| {
+        if (self.handle) |h| {
             var buf: [4096]u8 = undefined;
             const output = std.fmt.bufPrint(&buf, format, args) catch return;
             // Skip if it's just ANSI control sequences (starts with \x1b or \r)
             if (output.len > 0 and (output[0] == '\x1b' or output[0] == '\r')) {
                 return;
             }
-            writeFd(f, output);
+            writeHandle(h, output);
         }
     }
 
@@ -330,10 +389,10 @@ const Printer = struct {
         std.debug.print("\x1b[0m", .{});
 
         // Write to file without ANSI escape codes
-        if (self.fd) |f| {
+        if (self.handle) |h| {
             var buf: [4096]u8 = undefined;
             const output = std.fmt.bufPrint(&buf, format, args) catch return;
-            writeFd(f, output);
+            writeHandle(h, output);
         }
     }
 
@@ -356,9 +415,19 @@ const MonoTimer = struct {
         const native_os = @import("builtin").os.tag;
         switch (native_os) {
             .windows => {
+                // `std.os.windows.QueryPerformance*` were removed in 0.16; bind
+                // the syscalls directly.
                 const w = std.os.windows;
-                const ticks = w.QueryPerformanceCounter();
-                const freq = w.QueryPerformanceFrequency();
+                const k32 = struct {
+                    extern "kernel32" fn QueryPerformanceCounter(lpPerformanceCount: *w.LARGE_INTEGER) callconv(.winapi) w.BOOL;
+                    extern "kernel32" fn QueryPerformanceFrequency(lpFrequency: *w.LARGE_INTEGER) callconv(.winapi) w.BOOL;
+                };
+                var ticks_li: w.LARGE_INTEGER = 0;
+                var freq_li: w.LARGE_INTEGER = 0;
+                _ = k32.QueryPerformanceCounter(&ticks_li);
+                _ = k32.QueryPerformanceFrequency(&freq_li);
+                const ticks: u64 = @intCast(ticks_li);
+                const freq: u64 = @intCast(freq_li);
                 // Convert ticks -> nanoseconds without overflowing.
                 const ns_per_s: u64 = std.time.ns_per_s;
                 const seconds: u64 = ticks / freq;
@@ -499,20 +568,28 @@ const Env = struct {
     fn readEnv(alloc: Allocator, key: []const u8) ?[]const u8 {
         // `std.process.getEnvVarOwned` was removed in Zig 0.16. For a custom test
         // runner we don't have an `Io` to feed `Environ.getAlloc`, so we read
-        // straight from libc's `getenv` (POSIX) or the Windows API.
+        // straight from libc's `getenv` (POSIX) or the Windows API directly
+        // (the `kernel32.GetEnvironmentVariableW` wrapper was dropped in 0.16).
         const native_os = @import("builtin").os.tag;
         switch (native_os) {
             .windows => {
+                const w = std.os.windows;
+                const k32 = struct {
+                    extern "kernel32" fn GetEnvironmentVariableW(
+                        lpName: w.LPCWSTR,
+                        lpBuffer: ?[*]u16,
+                        nSize: w.DWORD,
+                    ) callconv(.winapi) w.DWORD;
+                };
                 // Convert key to WTF-16, query, and convert back.
                 var key_buf_w: [256]u16 = undefined;
                 const key_len_w = std.unicode.wtf8ToWtf16Le(&key_buf_w, key) catch return null;
                 if (key_len_w >= key_buf_w.len) return null;
                 key_buf_w[key_len_w] = 0;
-                const key_z: [*:0]u16 = @ptrCast(&key_buf_w);
+                const key_z: w.LPCWSTR = @ptrCast(&key_buf_w);
 
                 var val_buf_w: [4096]u16 = undefined;
-                const w = std.os.windows;
-                const written = w.kernel32.GetEnvironmentVariableW(key_z, &val_buf_w, val_buf_w.len);
+                const written = k32.GetEnvironmentVariableW(key_z, &val_buf_w, val_buf_w.len);
                 if (written == 0) return null;
                 if (written >= val_buf_w.len) return null;
                 const wtf16 = val_buf_w[0..written];

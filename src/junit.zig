@@ -54,9 +54,14 @@ pub const JUnitWriter = struct {
         const native_os = @import("builtin").os.tag;
         switch (native_os) {
             .windows => {
-                // Windows: FILETIME -> Unix seconds.
-                var ft: std.os.windows.FILETIME = undefined;
-                std.os.windows.kernel32.GetSystemTimeAsFileTime(&ft);
+                // Windows: FILETIME -> Unix seconds. The std.os.windows.kernel32
+                // wrappers were trimmed in 0.16, so declare the import directly.
+                const w = std.os.windows;
+                const k32 = struct {
+                    extern "kernel32" fn GetSystemTimeAsFileTime(lpSystemTimeAsFileTime: *w.FILETIME) callconv(.winapi) void;
+                };
+                var ft: w.FILETIME = undefined;
+                k32.GetSystemTimeAsFileTime(&ft);
                 const ticks: i64 = (@as(i64, ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
                 const unix_epoch_offset: i64 = 11644473600;
                 return @divTrunc(ticks, 10_000_000) - unix_epoch_offset;
@@ -94,24 +99,50 @@ pub const JUnitWriter = struct {
         const native_os = @import("builtin").os.tag;
         switch (native_os) {
             .windows => {
-                // Open via Windows API; fall back to libc if available.
-                if (@hasDecl(std.c, "open")) {
-                    var path_buf: [std.fs.max_path_bytes:0]u8 = undefined;
-                    if (path.len >= path_buf.len) return error.NameTooLong;
-                    @memcpy(path_buf[0..path.len], path);
-                    path_buf[path.len] = 0;
-                    const c = std.c;
-                    const flags: c.O = .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true };
-                    const fd_int = c.open(@ptrCast(&path_buf), flags, 0o644);
-                    if (fd_int < 0) return error.FileOpenFailed;
-                    defer _ = c.close(fd_int);
-                    var remaining = bytes;
-                    while (remaining.len > 0) {
-                        const w = c.write(fd_int, remaining.ptr, remaining.len);
-                        if (w < 0) return error.WriteFailed;
-                        remaining = remaining[@intCast(w)..];
-                    }
-                } else return error.FileOpenFailed;
+                // Use the Win32 file API directly. `std.c.O` is `void` on
+                // Windows in 0.16, so we can't reuse the POSIX path here.
+                const w = std.os.windows;
+                const k32 = struct {
+                    extern "kernel32" fn CreateFileW(
+                        lpFileName: w.LPCWSTR,
+                        dwDesiredAccess: w.DWORD,
+                        dwShareMode: w.DWORD,
+                        lpSecurityAttributes: ?*anyopaque,
+                        dwCreationDisposition: w.DWORD,
+                        dwFlagsAndAttributes: w.DWORD,
+                        hTemplateFile: ?w.HANDLE,
+                    ) callconv(.winapi) w.HANDLE;
+                    extern "kernel32" fn WriteFile(
+                        hFile: w.HANDLE,
+                        lpBuffer: [*]const u8,
+                        nNumberOfBytesToWrite: w.DWORD,
+                        lpNumberOfBytesWritten: *w.DWORD,
+                        lpOverlapped: ?*anyopaque,
+                    ) callconv(.winapi) w.BOOL;
+                };
+                const GENERIC_WRITE: w.DWORD = 0x40000000;
+                const CREATE_ALWAYS: w.DWORD = 2;
+                const FILE_ATTRIBUTE_NORMAL: w.DWORD = 0x80;
+
+                // Convert path to WTF-16 (null-terminated).
+                var path_buf_w: [std.fs.max_path_bytes]u16 = undefined;
+                const path_len_w = std.unicode.wtf8ToWtf16Le(&path_buf_w, path) catch return error.InvalidPath;
+                if (path_len_w >= path_buf_w.len) return error.NameTooLong;
+                path_buf_w[path_len_w] = 0;
+                const path_z: w.LPCWSTR = @ptrCast(&path_buf_w);
+
+                const h = k32.CreateFileW(path_z, GENERIC_WRITE, 0, null, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, null);
+                if (h == w.INVALID_HANDLE_VALUE) return error.FileOpenFailed;
+                defer w.CloseHandle(h);
+
+                var remaining = bytes;
+                while (remaining.len > 0) {
+                    const chunk_len: w.DWORD = @intCast(@min(remaining.len, std.math.maxInt(w.DWORD)));
+                    var written: w.DWORD = 0;
+                    const ok = k32.WriteFile(h, remaining.ptr, chunk_len, &written, null);
+                    if (!ok.toBool() or written == 0) return error.WriteFailed;
+                    remaining = remaining[written..];
+                }
             },
             else => {
                 var path_buf: [std.fs.max_path_bytes:0]u8 = undefined;
@@ -125,9 +156,9 @@ pub const JUnitWriter = struct {
                 defer _ = c.close(fd_int);
                 var remaining = bytes;
                 while (remaining.len > 0) {
-                    const w = c.write(fd_int, remaining.ptr, remaining.len);
-                    if (w < 0) return error.WriteFailed;
-                    remaining = remaining[@intCast(w)..];
+                    const w_ret = c.write(fd_int, remaining.ptr, remaining.len);
+                    if (w_ret < 0) return error.WriteFailed;
+                    remaining = remaining[@intCast(w_ret)..];
                 }
             },
         }

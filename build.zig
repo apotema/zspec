@@ -31,6 +31,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/zspec.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
         }),
     });
 
@@ -42,6 +43,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tests/example_test.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
             .imports = &.{
                 .{ .name = "zspec", .module = zspec_mod },
             },
@@ -57,6 +59,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tests/factory_union_test.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
             .imports = &.{
                 .{ .name = "zspec", .module = zspec_mod },
             },
@@ -72,6 +75,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tests/factory_zon_test.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
             .imports = &.{
                 .{ .name = "zspec", .module = zspec_mod },
             },
@@ -87,6 +91,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tests/fixture_test.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
             .imports = &.{
                 .{ .name = "zspec", .module = zspec_mod },
             },
@@ -142,6 +147,7 @@ pub fn build(b: *std.Build) void {
                 .root_source_file = b.path(ex.path),
                 .target = target,
                 .optimize = optimize,
+                .link_libc = true,
                 .imports = imports,
             }),
             .test_runner = .{ .path = b.path("src/runner.zig"), .mode = .simple },

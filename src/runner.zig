@@ -32,6 +32,28 @@ pub fn main() !void {
     // Use page allocator for JUnit writer (may need more memory for results)
     const page_allocator = std.heap.page_allocator;
 
+    // Initialize `std.testing.io_instance` so tests that reach for
+    // `std.testing.io` get a real `Io.Threaded` with a worker pool.
+    //
+    // `std.testing` declares (testing.zig:34-35):
+    //
+    //     pub var io_instance: Io.Threaded = undefined;
+    //     pub const io = if (builtin.is_test) io_instance.io() else ...;
+    //
+    // `Threaded.io(t)` bakes `&io_instance` into the returned `Io`'s
+    // `userdata` *at comptime* (lib/std/Io/Threaded.zig:1806). Without
+    // a runtime init, the global memory at that address stays zero —
+    // worker_threads = null, etc. — and every operation that needs to
+    // enqueue work onto the thread pool deadlocks on linux. macOS
+    // satisfies more zero-init paths, so the bug only shows up there.
+    //
+    // The stdlib's terminal runner does this re-init *per test* (see
+    // lib/compiler/test_runner.zig:273-282). For a `.simple`-mode
+    // runner a single global init is sufficient and cheaper than
+    // spinning up a worker pool for every test. See issue #44.
+    std.testing.io_instance = .init(std.testing.allocator, .{});
+    defer std.testing.io_instance.deinit();
+
     const env = Env.init(allocator);
     defer env.deinit(allocator);
 

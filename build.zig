@@ -120,12 +120,34 @@ pub fn build(b: *std.Build) void {
 
     const run_fixture_tests = b.addRunArtifact(fixture_tests);
 
+    // Regression test for issue #44 — the `.simple` runner must
+    // initialize `std.testing.io_instance` so tests reaching for
+    // `std.testing.io` don't deadlock on linux. Routed through the
+    // `.simple` runner (which contains the fix) on purpose: a
+    // default-runner version of this test would always pass because
+    // the stdlib's runner does the per-test init itself.
+    const testing_io_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/testing_io_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+            .imports = &.{
+                .{ .name = "zspec", .module = zspec_mod },
+            },
+        }),
+        .test_runner = .{ .path = b.path("src/runner.zig"), .mode = .simple },
+    });
+
+    const run_testing_io_tests = b.addRunArtifact(testing_io_tests);
+
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_junit_unit_tests.step);
     test_step.dependOn(&run_fixture_tests.step);
     test_step.dependOn(&run_factory_union_tests.step);
     test_step.dependOn(&run_factory_zon_tests.step);
+    test_step.dependOn(&run_testing_io_tests.step);
 
     const example_step = b.step("example", "Run example tests");
     example_step.dependOn(&run_example_tests.step);

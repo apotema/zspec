@@ -45,7 +45,8 @@ pub fn main() !void {
     // a runtime init, the global memory at that address stays zero —
     // worker_threads = null, etc. — and every operation that needs to
     // enqueue work onto the thread pool deadlocks on linux. macOS
-    // satisfies more zero-init paths, so the bug only shows up there.
+    // happens to satisfy more zero-init paths along the way, so the
+    // bug stays hidden there and only manifests on linux.
     //
     // The stdlib's terminal runner does this re-init *per test* (see
     // lib/compiler/test_runner.zig:273-282). For a `.simple`-mode

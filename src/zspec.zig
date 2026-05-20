@@ -66,16 +66,21 @@ pub fn LetAlloc(comptime T: type, comptime init_fn: fn (std.mem.Allocator) T) ty
 }
 
 /// Comparison helper for `expect.equal` / `expect.notEqual`. Dispatches
-/// on `@typeInfo` so types that don't support `==` (slices, error unions)
-/// still compare correctly:
+/// on `@typeInfo` so types that don't support `==` (slices, error unions,
+/// structs, arrays, optionals-of-structs) still compare correctly:
 ///
 ///   - Slices compare element-wise via `std.mem.eql` so `[]const u8`
 ///     equality "just works" without forcing callers into
 ///     `std.testing.expectEqualStrings`.
 ///   - Error unions compare by resolving both sides: same error → equal,
 ///     same payload (recursively) → equal, mismatched outcomes → not equal.
-///   - Everything else falls through to plain `==`, preserving the
-///     existing behavior for primitives, enums, simple structs, etc.
+///   - Structs, arrays, vectors and optionals/pointers wrapping them are
+///     compared **structurally** via `std.meta.eql` (recursive field /
+///     element equality). Zig's `==` is a *compile error* for these, so a
+///     plain fall-through would break the test build (see issue #46).
+///   - Everything else (`==`-comparable scalars: ints, floats, bools,
+///     enums, scalar optionals/pointers, …) still uses plain `==`,
+///     preserving the existing behavior.
 fn valuesEqual(actual: anytype, expected: @TypeOf(actual)) bool {
     const T = @TypeOf(actual);
     switch (@typeInfo(T)) {
@@ -100,8 +105,30 @@ fn valuesEqual(actual: anytype, expected: @TypeOf(actual)) bool {
                 }
             }
         },
+        // Aggregates and optionals are routed through `usesStructuralEq`:
+        // when `==` is illegal for the (unwrapped) type we delegate to
+        // `std.meta.eql`, which does a correct recursive field/element
+        // compare and transparently unwraps optionals. `==`-comparable
+        // cases (scalar optionals, etc.) keep using `==`.
+        .@"struct", .@"union", .array, .vector, .optional => {
+            if (comptime usesStructuralEq(T)) return std.meta.eql(actual, expected);
+            return actual == expected;
+        },
         else => return actual == expected,
     }
+}
+
+/// True when type `T` must be compared structurally because Zig's `==`
+/// operator is a compile error for it. Optionals/pointers are unwrapped to
+/// inspect the underlying type. Structs, unions, arrays and vectors are not
+/// `==`-comparable; scalars (ints, floats, bools, enums) are.
+fn usesStructuralEq(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .@"struct", .@"union", .array, .vector => true,
+        .optional => |o| usesStructuralEq(o.child),
+        .pointer => |p| usesStructuralEq(p.child),
+        else => false,
+    };
 }
 
 /// Custom expectation/matcher system
@@ -391,6 +418,71 @@ test "expect.toReturnError: payload-instead-of-error fails" {
 test "expect.equal: int (regression check for the dispatch fall-through)" {
     try expect.equal(@as(u32, 42), 42);
     try std.testing.expectError(error.ExpectationFailed, expect.equal(@as(u32, 1), @as(u32, 2)));
+}
+
+// ── expect.equal on structs / arrays / optionals-of-structs (issue #46) ──
+//
+// Pre-#46 these failed at *compile time*: the `else` branch did
+// `actual == expected`, and Zig's `==` is illegal for structs, arrays of
+// structs, and optionals of structs. valuesEqual now routes these through
+// `std.meta.eql` for a structural compare.
+
+const Args46 = struct { port: u16 = 8080, no_build: bool = false };
+
+test "expect.equal: struct — equal fields" {
+    try expect.equal(Args46{ .port = 9000, .no_build = true }, Args46{ .port = 9000, .no_build = true });
+}
+
+test "expect.equal: struct — unequal fields fails" {
+    try std.testing.expectError(
+        error.ExpectationFailed,
+        expect.equal(Args46{ .port = 9000 }, Args46{ .port = 8080 }),
+    );
+}
+
+test "expect.equal: optional struct vs null — both null" {
+    const a: ?Args46 = null;
+    try expect.equal(a, null);
+}
+
+test "expect.equal: optional struct vs null — value vs null fails" {
+    const a: ?Args46 = Args46{ .port = 1234 };
+    try std.testing.expectError(error.ExpectationFailed, expect.equal(a, null));
+}
+
+test "expect.equal: optional struct vs optional struct — equal" {
+    const a: ?Args46 = Args46{ .port = 3000, .no_build = true };
+    const b: ?Args46 = Args46{ .port = 3000, .no_build = true };
+    try expect.equal(a, b);
+}
+
+test "expect.equal: optional struct vs optional struct — unequal fails" {
+    const a: ?Args46 = Args46{ .port = 3000 };
+    const b: ?Args46 = Args46{ .port = 4000 };
+    try std.testing.expectError(error.ExpectationFailed, expect.equal(a, b));
+}
+
+test "expect.equal: array of structs — equal" {
+    const a = [_]Args46{ .{ .port = 1 }, .{ .port = 2 } };
+    const b = [_]Args46{ .{ .port = 1 }, .{ .port = 2 } };
+    try expect.equal(a, b);
+}
+
+test "expect.equal: array of structs — unequal fails" {
+    const a = [_]Args46{ .{ .port = 1 }, .{ .port = 2 } };
+    const b = [_]Args46{ .{ .port = 1 }, .{ .port = 9 } };
+    try std.testing.expectError(error.ExpectationFailed, expect.equal(a, b));
+}
+
+test "expect.notEqual: struct — unequal fields passes" {
+    try expect.notEqual(Args46{ .port = 1 }, Args46{ .port = 2 });
+}
+
+test "expect.notEqual: struct — equal fields fails" {
+    try std.testing.expectError(
+        error.ExpectationFailed,
+        expect.notEqual(Args46{ .port = 1 }, Args46{ .port = 1 }),
+    );
 }
 
 // Include tests from submodules

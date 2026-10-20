@@ -46,7 +46,7 @@ fn buildFixture(comptime T: type, comptime zon_data: anytype, overrides: anytype
 
     // Validate override fields exist in T (catch typos at compile time)
     if (OverridesType != @TypeOf(.{})) {
-        inline for (std.meta.fields(OverridesType)) |override_field| {
+        inline for (@import("reflection.zig").fields(OverridesType)) |override_field| {
             if (!@hasField(T, override_field.name)) {
                 @compileError("Unknown override field '" ++ override_field.name ++ "'. " ++
                     "Type '" ++ @typeName(T) ++ "' has no such field.");
@@ -54,7 +54,7 @@ fn buildFixture(comptime T: type, comptime zon_data: anytype, overrides: anytype
         }
     }
 
-    inline for (std.meta.fields(T)) |field| {
+    inline for (@import("reflection.zig").fields(T)) |field| {
         // Check for callsite override first
         if (OverridesType != @TypeOf(.{}) and @hasField(OverridesType, field.name)) {
             const override_value = @field(overrides, field.name);
@@ -96,7 +96,7 @@ fn mergeOverride(comptime FieldType: type, comptime zon_default: anytype, overri
     const OverrideType = @TypeOf(override);
 
     var result: FieldType = undefined;
-    inline for (std.meta.fields(FieldType)) |field| {
+    inline for (@import("reflection.zig").fields(FieldType)) |field| {
         if (@hasField(OverrideType, field.name)) {
             // Override provides this field — use it (recursively merge if also struct)
             const override_value = @field(override, field.name);
@@ -167,7 +167,7 @@ fn resolveArrayField(comptime ArrayType: type, value: anytype) ArrayType {
         if (!@typeInfo(ValueType).@"struct".is_tuple) {
             @compileError("Fixture: array field expects a tuple (.{ val1, val2, ... }), got a named struct");
         }
-        const value_fields = std.meta.fields(ValueType);
+        const value_fields = @import("reflection.zig").fields(ValueType);
         if (value_fields.len != array_info.len) {
             @compileError(std.fmt.comptimePrint(
                 "Fixture: array field expects {d} elements but .zon tuple has {d}",
@@ -189,7 +189,7 @@ fn resolveArrayField(comptime ArrayType: type, value: anytype) ArrayType {
 /// Extends coerce.validateZonFields with array-aware validation.
 fn validateFixtureData(comptime T: type, comptime zon_data: anytype) void {
     const ZonType = @TypeOf(zon_data);
-    const zon_fields = std.meta.fields(ZonType);
+    const zon_fields = @import("reflection.zig").fields(ZonType);
 
     inline for (zon_fields) |zon_field| {
         if (!@hasField(T, zon_field.name)) {
@@ -199,7 +199,7 @@ fn validateFixtureData(comptime T: type, comptime zon_data: anytype) void {
         }
 
         // Find the target field and recursively validate
-        inline for (std.meta.fields(T)) |target_field| {
+        inline for (@import("reflection.zig").fields(T)) |target_field| {
             if (comptime std.mem.eql(u8, target_field.name, zon_field.name)) {
                 const zon_field_value = @field(zon_data, zon_field.name);
                 const ZonFieldType = @TypeOf(zon_field_value);
@@ -210,7 +210,7 @@ fn validateFixtureData(comptime T: type, comptime zon_data: anytype) void {
                     if (@typeInfo(ZonFieldType) == .@"struct") {
                         // Validate each tuple element against the array element type
                         if (@typeInfo(elem_type) == .@"struct") {
-                            inline for (0..std.meta.fields(ZonFieldType).len) |i| {
+                            inline for (0..@import("reflection.zig").fields(ZonFieldType).len) |i| {
                                 const elem = zon_field_value[i];
                                 if (@typeInfo(@TypeOf(elem)) == .@"struct") {
                                     validateFixtureData(elem_type, elem);

@@ -263,13 +263,14 @@ fn refAllDeclsRecursive(comptime T: type) void {
     switch (info) {
         .@"struct", .@"enum", .@"union", .@"opaque" => {
             inline for (comptime std.meta.declarations(T)) |decl| {
-                if (@TypeOf(@field(T, decl.name)) == type) {
-                    switch (@typeInfo(@field(T, decl.name))) {
-                        .@"struct", .@"enum", .@"union", .@"opaque" => refAllDeclsRecursive(@field(T, decl.name)),
+                const name = if (@TypeOf(decl) == [:0]const u8) decl else decl.name;
+                if (@TypeOf(@field(T, name)) == type) {
+                    switch (@typeInfo(@field(T, name))) {
+                        .@"struct", .@"enum", .@"union", .@"opaque" => refAllDeclsRecursive(@field(T, name)),
                         else => {},
                     }
                 }
-                _ = &@field(T, decl.name);
+                _ = &@field(T, name);
             }
         },
         else => {},

@@ -13,7 +13,7 @@ const junit = @import("junit.zig");
 
 const Allocator = std.mem.Allocator;
 
-const BORDER = "=" ** 80;
+const BORDER: [80]u8 = @splat('=');
 
 // Use in custom panic handler
 var current_test: ?[]const u8 = null;
@@ -22,6 +22,13 @@ pub const std_options = std.Options{
     .logFn = logging.log,
     .log_level = .debug,
 };
+
+fn resetTestingAllocator() void {
+    std.testing.allocator_instance = if (@hasDecl(std.heap, "SafeAllocator"))
+        .init(std.heap.page_allocator, .{ .canary = 0xc3a701ba, .check_write_after_free = true })
+    else
+        .{};
+}
 
 pub fn main() !void {
     var mem: [8192]u8 = undefined;
@@ -52,7 +59,9 @@ pub fn main() !void {
     // lib/compiler/test_runner.zig:273-282). For a `.simple`-mode
     // runner a single global init is sufficient and cheaper than
     // spinning up a worker pool for every test. See issue #44.
-    std.testing.io_instance = .init(std.testing.allocator, .{});
+    // The shared I/O runtime outlives each test allocator reset.
+    resetTestingAllocator();
+    std.testing.io_instance = .init(std.heap.page_allocator, .{});
     defer std.testing.io_instance.deinit();
 
     const env = Env.init(allocator);
@@ -78,7 +87,7 @@ pub fn main() !void {
     printer.fmt("\r\x1b[0K", .{}); // beginning of line and clear to end of line
 
     // Track which scopes have had beforeAll run
-    var initialized_scopes: [64]?[]const u8 = .{null} ** 64;
+    var initialized_scopes: [64]?[]const u8 = @splat(null);
     var num_initialized_scopes: usize = 0;
 
     const scopeInitialized = struct {
@@ -150,7 +159,7 @@ pub fn main() !void {
         }
 
         current_test = friendly_name;
-        std.testing.allocator_instance = .{};
+        resetTestingAllocator();
 
         // Run before hooks that apply to this test's scope
         for (builtin.test_functions) |hook| {
@@ -181,7 +190,8 @@ pub fn main() !void {
 
         // Check for memory leaks if enabled
         const leak_check = std.testing.allocator_instance.deinit();
-        if (env.detect_leaks and leak_check == .leak) {
+        const leaked = if (@TypeOf(leak_check) == usize) leak_check != 0 else leak_check == .leak;
+        if (env.detect_leaks and leaked) {
             leak += 1;
             printer.status(.fail, "\n{s}\n\"{s}\" - Memory Leak Detected\n{s}\n", .{ BORDER, friendly_name, BORDER });
             if (env.fail_on_leak) {
@@ -418,7 +428,6 @@ const Printer = struct {
             writeHandle(h, output);
         }
     }
-
 };
 
 const Status = enum {
@@ -761,7 +770,6 @@ const SmartStackTrace = struct {
         if (std.mem.indexOf(u8, file_name, "/zig/lib/")) |_| return true;
         return false;
     }
-
 };
 
 // Unit tests for SmartStackTrace

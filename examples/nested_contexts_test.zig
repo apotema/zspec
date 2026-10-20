@@ -16,7 +16,7 @@ test {
 
 // A minimal stack for demonstration
 const Stack = struct {
-    items: [10]i32 = .{0} ** 10,
+    items: [10]i32 = @splat(0),
     top: usize = 0,
 
     fn push(self: *Stack, val: i32) void {

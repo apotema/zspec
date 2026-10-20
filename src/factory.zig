@@ -15,11 +15,11 @@ const coerce = @import("coerce.zig");
 /// Global sequence counters - reset with resetSequences()
 /// Using a simple array-based approach for simplicity and to avoid hashmap issues
 const MAX_SEQUENCES = 256;
-var sequence_values: [MAX_SEQUENCES]u64 = [_]u64{0} ** MAX_SEQUENCES;
+var sequence_values: [MAX_SEQUENCES]u64 = @splat(0);
 
 /// Reset all sequence counters to 0
 pub fn resetSequences() void {
-    sequence_values = [_]u64{0} ** MAX_SEQUENCES;
+    sequence_values = @splat(0);
 }
 
 fn getNextSequence(id: usize) u64 {
@@ -172,7 +172,7 @@ fn FactoryImpl(comptime T: type, comptime defaults: anytype, comptime depth: usi
 
         fn buildInternal(alloc: std.mem.Allocator, overrides: anytype) T {
             var result: T = undefined;
-            const target_fields = std.meta.fields(T);
+            const target_fields = @import("reflection.zig").fields(T);
 
             inline for (target_fields) |field| {
                 const field_name = field.name;
@@ -359,7 +359,7 @@ fn TraitFactoryImpl(comptime T: type, comptime base_defaults: anytype, comptime 
 
         fn buildInternal(alloc: std.mem.Allocator, overrides: anytype) T {
             var result: T = undefined;
-            const target_fields = std.meta.fields(T);
+            const target_fields = @import("reflection.zig").fields(T);
 
             inline for (target_fields) |field| {
                 const field_name = field.name;
@@ -519,13 +519,13 @@ fn TraitFactoryImpl(comptime T: type, comptime base_defaults: anytype, comptime 
             const OverlayType = @TypeOf(overlay);
             var result: MergedTraitType(base, overlay) = undefined;
             // Only copy base fields that are NOT overridden by overlay (to avoid type mismatch)
-            inline for (std.meta.fields(@TypeOf(base))) |field| {
+            inline for (@import("reflection.zig").fields(@TypeOf(base))) |field| {
                 if (!@hasField(OverlayType, field.name)) {
                     @field(result, field.name) = @field(base, field.name);
                 }
             }
             // Copy all overlay fields
-            inline for (std.meta.fields(OverlayType)) |field| {
+            inline for (@import("reflection.zig").fields(OverlayType)) |field| {
                 @field(result, field.name) = @field(overlay, field.name);
             }
             return result;
@@ -534,13 +534,14 @@ fn TraitFactoryImpl(comptime T: type, comptime base_defaults: anytype, comptime 
         fn MergedTraitType(comptime base: anytype, comptime overlay: anytype) type {
             const BaseType = @TypeOf(base);
             const OverlayType = @TypeOf(overlay);
-            const base_fields = std.meta.fields(BaseType);
-            const overlay_fields = std.meta.fields(OverlayType);
+            const base_fields = @import("reflection.zig").fields(BaseType);
+            const overlay_fields = @import("reflection.zig").fields(OverlayType);
 
             const total = base_fields.len + overlay_fields.len;
             var names: [total][:0]const u8 = undefined;
             var types: [total]type = undefined;
-            var attrs: [total]std.builtin.Type.StructField.Attributes = undefined;
+            const Attributes = if (@hasDecl(std.builtin.Type.Struct, "FieldAttributes")) std.builtin.Type.Struct.FieldAttributes else std.builtin.Type.StructField.Attributes;
+            var attrs: [total]Attributes = undefined;
             var count: usize = 0;
 
             // Add base fields (that are not in overlay)

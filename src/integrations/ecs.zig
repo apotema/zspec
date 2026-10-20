@@ -101,8 +101,8 @@ pub fn ComponentSet(comptime T: type) type {
 pub fn createEntity(registry: anytype, components: anytype) EntityType(@TypeOf(registry)) {
     const entity = registry.create();
 
-    inline for (std.meta.fields(@TypeOf(components))) |field| {
-        const component = @field(components, field.name);
+    inline for (comptime std.meta.fieldNames(@TypeOf(components))) |name| {
+        const component = @field(components, name);
         registry.add(entity, component);
     }
 
